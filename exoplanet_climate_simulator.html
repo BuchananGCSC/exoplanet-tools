@@ -284,10 +284,6 @@
           <div class="slider-label">Obliquity (°) <span id="lbl-obl">23.4</span></div>
           <input type="range" id="sl-obl" min="0" max="90" step="0.5" value="23.4">
         </div>
-        <div class="slider-row">
-          <div class="slider-label">Eccentricity <span id="lbl-ecc">0.00</span></div>
-          <input type="range" id="sl-ecc" min="0" max="0.8" step="0.01" value="0.0">
-        </div>
       </div>
     </div>
 
@@ -333,12 +329,13 @@
   <!-- MAIN AREA -->
   <div class="main-area">
     <div class="tabs">
-      <div class="tab active" onclick="showTab('t1')">📡 Section 1: Star</div>
-      <div class="tab" onclick="showTab('t2')">🪐 Section 2: Orbit</div>
-      <div class="tab" onclick="showTab('t3')">🌡️ Sections 3–4: EBM</div>
-      <div class="tab" onclick="showTab('t5a')">🔄 Section 5A: Rotating</div>
-      <div class="tab" onclick="showTab('t5b')">🔒 Section 5B: TL</div>
-      <div class="tab" onclick="showTab('t6')">📊 Section 6: Summary</div>
+      <div class="tab active" onclick="showTab('t1')">1 · Star</div>
+      <div class="tab" onclick="showTab('t2')">2 · Orbit</div>
+      <div class="tab" onclick="showTab('tcalc')">3 · Orbital Calculators</div>
+      <div class="tab" onclick="showTab('t3')">4 · Energy Balance Model</div>
+      <div class="tab" onclick="showTab('t5a')">5 · Rotating Climate</div>
+      <div class="tab" onclick="showTab('t5b')">6 · Tidally Locked</div>
+      <div class="tab" onclick="showTab('t6')">7 · Full Summary</div>
     </div>
 
     <!-- TAB 1: STAR -->
@@ -359,12 +356,208 @@
       </div>
     </div>
 
-    <!-- TAB 3: EBM (Sections 3 + 4) -->
+    <!-- TAB 3: ORBITAL CALCULATORS -->
+    <div class="tab-content" id="tcalc">
+      <style>
+        .calc-grid-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 700px) { .calc-grid-inner { grid-template-columns: 1fr; } }
+        .calc-card-inner {
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 20px;
+          display: flex; flex-direction: column; gap: 16px;
+        }
+        .calc-card-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+        .calc-card-desc  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+        .solve-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .solve-btn {
+          font-size: 12px; font-weight: 600;
+          padding: 5px 12px; border-radius: 20px;
+          border: 1.5px solid var(--border);
+          background: var(--bg); color: var(--muted);
+          cursor: pointer; transition: all 0.15s;
+        }
+        .solve-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .solve-btn.active { border-color: var(--accent); background: rgba(88,166,255,0.1); color: var(--accent); }
+        .field-row-c { display: flex; flex-direction: column; gap: 4px; }
+        .field-label-c {
+          font-size: 11px; font-weight: 600;
+          text-transform: uppercase; letter-spacing: 0.06em;
+          color: var(--muted);
+        }
+        .field-input-row { display: flex; align-items: center; gap: 8px; }
+        .field-input-c {
+          flex: 1;
+          background: var(--bg);
+          border: 1.5px solid var(--border);
+          border-radius: 6px;
+          padding: 7px 12px;
+          font-size: 13px; font-family: monospace;
+          color: var(--text);
+          transition: border-color 0.15s;
+          -moz-appearance: textfield;
+        }
+        .field-input-c::-webkit-outer-spin-button, .field-input-c::-webkit-inner-spin-button { -webkit-appearance: none; }
+        .field-input-c:focus { outline: none; border-color: var(--accent); }
+        .field-input-c:disabled { background: var(--panel); color: var(--muted); border-color: var(--border); cursor: not-allowed; }
+        .field-unit-c { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 55px; text-align: right; font-style: italic; }
+        .calc-btn {
+          width: 100%; padding: 9px; border-radius: 6px;
+          background: var(--accent); color: #0d1117;
+          font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+          text-transform: uppercase; border: none; cursor: pointer;
+          transition: opacity 0.15s;
+        }
+        .calc-btn:hover { opacity: 0.85; }
+        .calc-result {
+          display: none; flex-direction: column; gap: 6px;
+          background: rgba(63,185,80,0.07);
+          border: 1.5px solid var(--green);
+          border-radius: 8px; padding: 14px 16px;
+        }
+        .calc-result.show { display: flex; }
+        .calc-result.error { background: rgba(248,81,73,0.07); border-color: var(--red); }
+        .calc-result-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--green); }
+        .calc-result.error .calc-result-label { color: var(--red); }
+        .calc-result-value { font-size: 17px; font-weight: 700; font-family: monospace; color: var(--text); }
+        .calc-result-note { font-size: 11px; color: var(--muted); line-height: 1.5; }
+        .formula-box {
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 8px; padding: 12px 14px;
+        }
+        .formula-box-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 6px; }
+        .formula-box-text  { font-family: monospace; font-size: 11px; color: var(--muted); line-height: 1.8; }
+        .formula-box-text em { font-style: italic; color: var(--accent); font-weight: 500; }
+        .density-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+        .preset-btn {
+          font-size: 11px; padding: 4px 10px; border-radius: 20px;
+          border: 1.5px solid var(--border);
+          background: var(--bg); color: var(--muted);
+          cursor: pointer; transition: all 0.15s;
+        }
+        .preset-btn:hover { border-color: var(--orange); color: var(--orange); }
+        .calc-divider { height: 1px; background: var(--border); margin: 0 -20px; }
+      </style>
+
+      <div class="calc-grid-inner">
+
+        <!-- Kepler's Third Law -->
+        <div class="calc-card-inner">
+          <div>
+            <div class="calc-card-title">⚖️ Kepler's Third Law</div>
+            <div class="calc-card-desc">Relates orbital period, semimajor axis, and stellar mass for any two-body system.</div>
+          </div>
+          <div class="calc-divider"></div>
+
+          <div>
+            <div class="field-label-c" style="margin-bottom:6px">Solve for</div>
+            <div class="solve-row" id="kepler-solve-row">
+              <button class="solve-btn active" data-target="period" onclick="kSetSolve('period')">Period <em>P</em></button>
+              <button class="solve-btn" data-target="axis" onclick="kSetSolve('axis')">Axis <em>a</em></button>
+              <button class="solve-btn" data-target="mass" onclick="kSetSolve('mass')">Mass <em>M</em></button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="field-row-c">
+              <div class="field-label-c">Semimajor Axis <em>a</em></div>
+              <div class="field-input-row">
+                <input class="field-input-c kfield" type="number" id="k-axis-c" placeholder="e.g. 1.0" min="0" step="any">
+                <span class="field-unit-c">AU</span>
+              </div>
+            </div>
+            <div class="field-row-c">
+              <div class="field-label-c">Orbital Period <em>P</em></div>
+              <div class="field-input-row">
+                <input class="field-input-c kfield" type="number" id="k-period-c" placeholder="e.g. 1.0" min="0" step="any">
+                <span class="field-unit-c">years</span>
+              </div>
+            </div>
+            <div class="field-row-c">
+              <div class="field-label-c">Stellar Mass <em>M</em></div>
+              <div class="field-input-row">
+                <input class="field-input-c kfield" type="number" id="k-mass-c" placeholder="e.g. 1.0" min="0" step="any">
+                <span class="field-unit-c">M☉</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="calc-btn" onclick="kCalc()">Calculate</button>
+
+          <div class="calc-result" id="k-result-c">
+            <div class="calc-result-label" id="k-result-label-c">Result</div>
+            <div class="calc-result-value" id="k-result-value-c">—</div>
+            <div class="calc-result-note" id="k-result-note-c"></div>
+          </div>
+
+          <div class="formula-box">
+            <div class="formula-box-title">Formula</div>
+            <div class="formula-box-text">
+              <em>P</em>² = <em>a</em>³ / <em>M</em><br>
+              <em>P</em> in years · <em>a</em> in AU · <em>M</em> in M☉
+            </div>
+          </div>
+        </div>
+
+        <!-- Planetary Properties -->
+        <div class="calc-card-inner">
+          <div>
+            <div class="calc-card-title">🌐 Planetary Properties</div>
+            <div class="calc-card-desc">Derive radius and surface gravity from planetary mass and mean density.</div>
+          </div>
+          <div class="calc-divider"></div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="field-row-c">
+              <div class="field-label-c">Planetary Mass <em>Mₚ</em></div>
+              <div class="field-input-row">
+                <input class="field-input-c pfield" type="number" id="p-mass-c" placeholder="e.g. 1.0" min="0" step="any">
+                <span class="field-unit-c">M⊕</span>
+              </div>
+            </div>
+            <div class="field-row-c">
+              <div class="field-label-c">Mean Density <em>ρ</em></div>
+              <div class="field-input-row">
+                <input class="field-input-c pfield" type="number" id="p-density-c" placeholder="e.g. 5.51" min="0" step="any">
+                <span class="field-unit-c">g/cm³</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="density-presets">
+            <button class="preset-btn" onclick="setPDensity(5.51)">🌍 Earth (5.51)</button>
+            <button class="preset-btn" onclick="setPDensity(3.93)">🔴 Mars (3.93)</button>
+            <button class="preset-btn" onclick="setPDensity(1.33)">🟠 Jupiter (1.33)</button>
+            <button class="preset-btn" onclick="setPDensity(0.69)">🪐 Saturn (0.69)</button>
+            <button class="preset-btn" onclick="setPDensity(1.64)">🔵 Neptune (1.64)</button>
+          </div>
+
+          <button class="calc-btn" style="background:var(--orange)" onclick="pCalc()">Calculate</button>
+
+          <div class="calc-result" id="p-result-c" style="--green:var(--orange)">
+            <div class="calc-result-label" id="p-result-label-c" style="color:var(--orange)">Result</div>
+            <div class="calc-result-value" id="p-result-value-c">—</div>
+            <div class="calc-result-note" id="p-result-note-c"></div>
+          </div>
+
+          <div class="formula-box">
+            <div class="formula-box-title">Formulas</div>
+            <div class="formula-box-text">
+              <em>R</em> = (3M / 4πρ)^(1/3) → in R⊕<br>
+              <em>g</em> = GM / R² → in units of g⊕<br>
+              M⊕ = 5.972×10²⁴ kg, R⊕ = 6.371×10⁶ m
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end calc-grid-inner -->
+    </div><!-- end tab tcalc -->
+
+    <!-- TAB 4: EBM (Sections 3 + 4) -->
     <div class="tab-content" id="t3">
-      <!-- Section 3: warm vs cold start time-series -->
-      <div class="plot-half" id="plot-3-ts"></div>
       <!-- Section 4: CO2 sensitivity + ice-albedo -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:280px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:420px">
         <div id="plot-co2"></div>
         <div id="plot-albedo"></div>
       </div>
@@ -389,19 +582,16 @@
     <!-- TAB 5B: TL -->
     <div class="tab-content" id="t5b">
       <!-- Day-night temperature profile -->
-      <div class="plot-half" id="plot-5b"></div>
-      <!-- D-sweep summary panel -->
-      <div class="plot-half" id="plot-5b-dsweep"></div>
+      <div class="plot-half" style="min-height:480px" id="plot-5b"></div>
       <div class="record-block" id="rec5b">
         <strong>📋 Record — Section 5B values to copy into your handout</strong>
         <div class="vals" id="rec5b-vals"></div>
       </div>
     </div>
 
-    <!-- TAB 6: SUMMARY -->
+    <!-- TAB 7: SUMMARY -->
     <div class="tab-content" id="t6">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:320px">
-        <div id="plot-6a"></div>
+      <div style="min-height:420px">
         <div id="plot-6b"></div>
       </div>
       <div class="record-block" id="rec6">
@@ -622,7 +812,6 @@ function updateSidebar() {
   document.getElementById('lbl-dist').textContent = dist.toFixed(2);
   document.getElementById('lbl-co2').textContent = co2.toFixed(0);
   document.getElementById('lbl-obl').textContent = obl.toFixed(1);
-  document.getElementById('lbl-ecc').textContent = ecc.toFixed(2);
   document.getElementById('lbl-diff').textContent = diff.toFixed(2);
 
   document.getElementById('badge-type').textContent = d.spType;
@@ -689,7 +878,7 @@ function plotHz() {
     xaxis:{ title:'Orbital Distance (AU)', range:[0,3.5] },
     yaxis:{ title:'Stellar Mass (M☉)', range:[0.08,2.0] },
     shapes: lines,
-    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top' },
+    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:10} },
     margin:{ t:50, r:20, b:60, l:70 },
   }), CFG);
 
@@ -740,7 +929,7 @@ function plotOrbit() {
     title:{ text:'Orbit vs Habitable Zone', font:{size:14} },
     xaxis:{ title:'AU', range:[-maxR, maxR], scaleanchor:'y' },
     yaxis:{ title:'AU', range:[-maxR, maxR] },
-    legend:{ x:0.01, y:0.99 },
+    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
     margin:{ t:50, r:20, b:60, l:70 },
   }), CFG);
 
@@ -764,33 +953,12 @@ function plotEBM() {
   const S0 = d.S0;
   const alb = PLANET_ALBEDO[planet];
 
-  // ── Section 3: warm vs cold start time-series ─────────────────────────────
+  // ── Section 4: CO₂ sensitivity ────────────────────────────────────────────
   const [ts_w, Ts_w] = run0dEBM(288, co2, S0, alb);
   const [ts_c, Ts_c] = run0dEBM(215, co2, S0, alb);
   const Teq_w = Ts_w[Ts_w.length-1] - 273.15;
   const Teq_c = Ts_c[Ts_c.length-1] - 273.15;
   const bistable = Math.abs(Teq_w - Teq_c) > 5;
-
-  Plotly.react('plot-3-ts', [
-    { x: ts_w, y: Ts_w.map(t=>t-273.15), mode:'lines',
-      name:`Warm start → ${Teq_w.toFixed(1)} °C`,
-      line:{color:'#f85149', width:2.5} },
-    { x: ts_c, y: Ts_c.map(t=>t-273.15), mode:'lines',
-      name:`Frozen start → ${Teq_c.toFixed(1)} °C`,
-      line:{color:'#58a6ff', width:2.5, dash:'dash'} },
-    { x:[0,300], y:[0,0],     mode:'lines', name:'0 °C (water freezes)',
-      line:{color:'#58a6ff', dash:'dot', width:1.2} },
-    { x:[0,300], y:[100,100], mode:'lines', name:'100 °C (water boils)',
-      line:{color:'#f85149', dash:'dot', width:1.2} },
-  ], layout({
-    title:{ text:'Section 3 — Approach to Equilibrium (warm vs. frozen start)', font:{size:13} },
-    xaxis:{ title:'Time (years)' },
-    yaxis:{ title:'Global Mean Temperature (°C)' },
-    legend:{ font:{size:10} },
-    margin:{ t:45, r:10, b:60, l:65 },
-  }), CFG);
-
-  // ── Section 4: CO₂ sensitivity ────────────────────────────────────────────
   const co2Vals = logspace(Math.log10(70), Math.log10(4480), 80);
   const Teq_co2 = co2Vals.map(c => {
     const [,Ts] = run0dEBM(288, c, S0, alb);
@@ -824,10 +992,10 @@ function plotEBM() {
   ];
 
   Plotly.react('plot-co2', traces_co2, layout({
-    title:{ text:'Section 4 — CO₂ Sensitivity', font:{size:13} },
+    title:{ text:'CO₂ Sensitivity', font:{size:13} },
     xaxis:{ title:'CO₂ (ppm)', type:'log' },
     yaxis:{ title:'Temperature (°C)' },
-    legend:{ font:{size:9} },
+    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:9} },
     margin:{ t:45, r:10, b:60, l:60 },
   }), CFG);
 
@@ -850,10 +1018,10 @@ function plotEBM() {
   ];
 
   Plotly.react('plot-albedo', traces_alb, layout({
-    title:{ text:'Section 4 — Ice-Albedo Bifurcation', font:{size:13} },
+    title:{ text:'Ice-Albedo Bifurcation', font:{size:13} },
     xaxis:{ title:'Stellar flux (% of actual)' },
     yaxis:{ title:'Equilibrium Temperature (°C)' },
-    legend:{ font:{size:9} },
+    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:9} },
     margin:{ t:45, r:10, b:60, l:60 },
   }), CFG);
 
@@ -916,12 +1084,12 @@ function plot5A() {
   ];
 
   Plotly.react('plot-5a', traces5a, layout({
-    title:{ text:`Section 5A — Summer Solstice Temperature vs Latitude`, font:{size:14} },
+    title:{ text:`Summer Solstice Temperature vs Latitude`, font:{size:14} },
     xaxis:{ title:'Latitude (°)',
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'] },
     yaxis:{ title:'Surface Temperature (°C)' },
-    legend:{ x:0.01, y:0.01 },
+    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
     margin:{ t:50, r:20, b:70, l:70 },
   }), CFG);
 
@@ -950,13 +1118,16 @@ function plot5A() {
   const hovLats = [];
   for (let lat = -90; lat <= 90; lat += 2) hovLats.push(lat);
 
+  // Transpose hovZ so rows=lats, cols=months (for x=month, y=lat)
+  const hovZT = hovLats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
+
   Plotly.react('plot-5a-hovm', [{
-    z: hovZ,
-    x: hovLats,
-    y: MONTHS,
+    z: hovZT,
+    x: MONTHS,
+    y: hovLats,
     type: 'heatmap',
     colorscale: 'RdBu',
-    reversescale: true,
+    reversescale: false,
     zmid: 0,
     colorbar: {
       title: { text:'°C', side:'right' },
@@ -965,16 +1136,16 @@ function plot5A() {
       tickfont:{ color:'#e6edf3', size:11 },
       titlefont:{ color:'#e6edf3', size:12 },
     },
-    hovertemplate: 'Lat: %{x}°<br>Month: %{y}<br>T: %{z:.1f} °C<extra></extra>',
+    hovertemplate: 'Month: %{x}<br>Lat: %{y}°<br>T: %{z:.1f} °C<extra></extra>',
   }], layout({
     title:{ text:'Seasonal Temperature: Month × Latitude (°C)', font:{size:13} },
-    xaxis:{
+    xaxis:{ title:'Month' },
+    yaxis:{
       title:'Latitude',
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'],
     },
-    yaxis:{ title:'Month', autorange:'reversed' },
-    margin:{ t:45, r:80, b:70, l:60 },
+    margin:{ t:45, r:80, b:70, l:70 },
   }), CFG);
 
   // ── Record block ───────────────────────────────────────────────────────────
@@ -1026,48 +1197,13 @@ function plot5B() {
     line:{color:'#8b949e', dash:'dash', width:1} });
 
   Plotly.react('plot-5b', traces, layout({
-    title:{ text:'Section 5B — Tidally Locked: Day–Night Temperature Profile', font:{size:14} },
+    title:{ text:'Tidally Locked: Day–Night Temperature Profile', font:{size:14} },
     xaxis:{ title:'Position (° from terminator)',
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['Antistellar (−90°)','','','Terminator (0°)','','','Substellar (+90°)'] },
     yaxis:{ title:'Surface Temperature (°C)' },
-    legend:{ x:0.01, y:0.01 },
+    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
     margin:{ t:50, r:20, b:90, l:70 },
-  }), CFG);
-
-  // ── D-sweep summary panel (matches notebook Section 5B right panel) ───────
-  const D_scan     = linspace(0.01, 0.7, 35);
-  const T_sub_s    = [], T_term_s = [], T_anti_s = [], T_mean_s = [];
-  D_scan.forEach(Dv => {
-    const [angs, tmps] = tlProfile(S0, co2, Dv, planet);
-    T_sub_s .push(tmps[tmps.length-1]);
-    T_term_s.push(tmps[Math.round(tmps.length/2)]);
-    T_anti_s.push(tmps[0]);
-    T_mean_s.push(tmps.reduce((a,b)=>a+b,0)/tmps.length);
-  });
-
-  Plotly.react('plot-5b-dsweep', [
-    { x:D_scan, y:T_sub_s,  mode:'lines', name:'Substellar point',
-      line:{color:'#e8962c', width:2} },
-    { x:D_scan, y:T_term_s, mode:'lines', name:'Terminator',
-      line:{color:'#3fb950', width:2} },
-    { x:D_scan, y:T_anti_s, mode:'lines', name:'Antistellar point',
-      line:{color:'#58a6ff', width:2} },
-    { x:D_scan, y:T_mean_s, mode:'lines', name:'Global mean',
-      line:{color:'#e6edf3', width:2, dash:'dash'} },
-    { x:[diff,diff], y:[-100,200], mode:'lines',
-      name:`Your D = ${diff.toFixed(2)}`,
-      line:{color:'#a371f7', dash:'dot', width:2} },
-    { x:[0,0.7], y:[-10,-10], mode:'lines', name:'Ice threshold',
-      line:{color:'#58a6ff', dash:'dot', width:1.2} },
-    { x:[0,0.7], y:[100,100], mode:'lines', name:'Boiling',
-      line:{color:'#f85149', dash:'dot', width:1.2} },
-  ], layout({
-    title:{ text:'How Heat Transport Strength (D) Shapes the Climate', font:{size:13} },
-    xaxis:{ title:'Heat Transport Strength D (W m⁻² K⁻¹)' },
-    yaxis:{ title:'Temperature (°C)' },
-    legend:{ font:{size:10} },
-    margin:{ t:45, r:20, b:60, l:65 },
   }), CFG);
 
   // ── Record block ───────────────────────────────────────────────────────────
@@ -1100,7 +1236,7 @@ function plot6() {
   const S0 = d.S0;
   const alb = PLANET_ALBEDO[planet];
 
-  // 0-D transient (warm + cold start — matches notebook Section 6 right panel)
+  // 0-D transient — compute for record block only (no longer plotted)
   const [ts_w, Ts_w] = run0dEBM(288, co2, S0, alb);
   const [ts_c, Ts_c] = run0dEBM(215, co2, S0, alb);
   const TsC_w = Ts_w.map(t => t-273.15);
@@ -1108,22 +1244,7 @@ function plot6() {
   const Teq_w = TsC_w[TsC_w.length-1];
   const Teq_c = TsC_c[TsC_c.length-1];
 
-  Plotly.react('plot-6a', [
-    { x:ts_w, y:TsC_w, mode:'lines', name:`Warm start → ${Teq_w.toFixed(1)} °C`,
-      line:{color:'#f85149', width:2.5} },
-    { x:ts_c, y:TsC_c, mode:'lines', name:`Frozen start → ${Teq_c.toFixed(1)} °C`,
-      line:{color:'#58a6ff', width:2, dash:'dash'} },
-    { x:[0,300], y:[0,0],     mode:'lines', name:'0°C', line:{color:'#58a6ff',dash:'dot',width:1} },
-    { x:[0,300], y:[100,100], mode:'lines', name:'100°C', line:{color:'#f85149',dash:'dot',width:1} },
-  ], layout({
-    title:{ text:'0-D EBM: Approach to Equilibrium', font:{size:13} },
-    xaxis:{ title:'Time (years)' },
-    yaxis:{ title:'Global Mean Temperature (°C)' },
-    legend:{ font:{size:10} },
-    margin:{ t:45, r:10, b:60, l:65 },
-  }), CFG);
-
-  // Spatial profile (lat or TL) for summary right panel
+  // Spatial profile (lat or TL) for summary panel
   let xLabel, xVals, Tvals, xTickvals, xTicktext;
   if (d.isLocked) {
     [xVals, Tvals] = tlProfile(S0, co2, diff, planet);
@@ -1165,6 +1286,7 @@ function plot6() {
     title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'Summer Solstice Latitude Profile', font:{size:13} },
     xaxis:{ title:xLabel, tickvals:xTickvals, ticktext:xTicktext },
     yaxis:{ title:'Temperature (°C)' },
+    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
     margin:{ t:45, r:10, b:90, l:65 },
   }), CFG);
 
@@ -1226,7 +1348,7 @@ function showTab(id) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.tab').forEach((el, i) => {
-    const tabs = ['t1','t2','t3','t5a','t5b','t6'];
+    const tabs = ['t1','t2','tcalc','t3','t5a','t5b','t6'];
     if (tabs[i] === id) el.classList.add('active');
   });
   activeTab = id;
@@ -1235,12 +1357,13 @@ function showTab(id) {
 
 function renderActive() {
   updateSidebar();
-  if      (activeTab === 't1')  plotHz();
-  else if (activeTab === 't2')  plotOrbit();
-  else if (activeTab === 't3')  plotEBM();
-  else if (activeTab === 't5a') plot5A();
-  else if (activeTab === 't5b') plot5B();
-  else if (activeTab === 't6')  plot6();
+  if      (activeTab === 't1')    plotHz();
+  else if (activeTab === 't2')    plotOrbit();
+  else if (activeTab === 'tcalc') {} // static calculators, no plot needed
+  else if (activeTab === 't3')    plotEBM();
+  else if (activeTab === 't5a')   plot5A();
+  else if (activeTab === 't5b')   plot5B();
+  else if (activeTab === 't6')    plot6();
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1271,11 +1394,117 @@ document.getElementById('sel-planet').addEventListener('change', e => {
 document.getElementById('sl-obl').addEventListener('input', e => {
   state.obl = +e.target.value; renderActive();
 });
-document.getElementById('sl-ecc').addEventListener('input', e => {
-  state.ecc = +e.target.value; renderActive();
-});
 document.getElementById('sl-diff').addEventListener('input', e => {
   state.diff = +e.target.value; renderActive();
+});
+
+// ───────────────────────────────────────────────────────────────────
+//  ORBITAL CALCULATORS (Tab 3)
+// ───────────────────────────────────────────────────────────────────
+let kSolve = 'period';
+
+function kSetSolve(target) {
+  kSolve = target;
+  document.querySelectorAll('#kepler-solve-row .solve-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === target);
+  });
+  const axisF   = document.getElementById('k-axis-c');
+  const periodF = document.getElementById('k-period-c');
+  const massF   = document.getElementById('k-mass-c');
+  axisF.disabled   = (target === 'axis');
+  periodF.disabled = (target === 'period');
+  massF.disabled   = (target === 'mass');
+  axisF.placeholder   = axisF.disabled   ? 'Calculated' : 'e.g. 1.0';
+  periodF.placeholder = periodF.disabled ? 'Calculated' : 'e.g. 1.0';
+  massF.placeholder   = massF.disabled   ? 'Calculated' : 'e.g. 1.0';
+  if (axisF.disabled)   axisF.value = '';
+  if (periodF.disabled) periodF.value = '';
+  if (massF.disabled)   massF.value = '';
+  document.getElementById('k-result-c').classList.remove('show','error');
+}
+kSetSolve('period');
+
+function calcFmt(n) {
+  if (Math.abs(n) < 1e-4 || Math.abs(n) >= 1e6) return n.toExponential(4);
+  return parseFloat(n.toPrecision(6)).toString();
+}
+
+function showCalcResult(boxId, labelId, valueId, noteId, isError, label, value, note) {
+  const box = document.getElementById(boxId);
+  box.classList.remove('show','error');
+  void box.offsetWidth;
+  box.classList.add('show');
+  if (isError) box.classList.add('error');
+  document.getElementById(labelId).textContent = isError ? 'Error' : label;
+  document.getElementById(valueId).textContent = value;
+  document.getElementById(noteId).textContent  = note || '';
+}
+
+function kCalc() {
+  const a = parseFloat(document.getElementById('k-axis-c').value);
+  const P = parseFloat(document.getElementById('k-period-c').value);
+  const M = parseFloat(document.getElementById('k-mass-c').value);
+  try {
+    if (kSolve === 'period') {
+      if (isNaN(a)||isNaN(M)) throw new Error('Enter values for Semimajor Axis and Stellar Mass.');
+      if (a<=0||M<=0) throw new Error('Values must be positive.');
+      const Pout = Math.sqrt(Math.pow(a,3)/M);
+      showCalcResult('k-result-c','k-result-label-c','k-result-value-c','k-result-note-c',
+        false,'Orbital Period  P', calcFmt(Pout)+' years',
+        `For a = ${a} AU orbiting a ${M} M☉ star.`);
+    } else if (kSolve === 'axis') {
+      if (isNaN(P)||isNaN(M)) throw new Error('Enter values for Orbital Period and Stellar Mass.');
+      if (P<=0||M<=0) throw new Error('Values must be positive.');
+      const aout = Math.pow(M*Math.pow(P,2), 1/3);
+      showCalcResult('k-result-c','k-result-label-c','k-result-value-c','k-result-note-c',
+        false,'Semimajor Axis  a', calcFmt(aout)+' AU',
+        `For P = ${P} yr around a ${M} M☉ star.`);
+    } else {
+      if (isNaN(a)||isNaN(P)) throw new Error('Enter values for Semimajor Axis and Orbital Period.');
+      if (a<=0||P<=0) throw new Error('Values must be positive.');
+      const Mout = Math.pow(a,3)/Math.pow(P,2);
+      showCalcResult('k-result-c','k-result-label-c','k-result-value-c','k-result-note-c',
+        false,'Stellar Mass  M', calcFmt(Mout)+' M☉',
+        `For a = ${a} AU with P = ${P} yr.`);
+    }
+  } catch(e) {
+    showCalcResult('k-result-c','k-result-label-c','k-result-value-c','k-result-note-c',
+      true,'','',e.message);
+  }
+}
+
+const M_EARTH_KG = 5.972e24, R_EARTH_M = 6.371e6, G_CONST = 6.674e-11, g_EARTH_MS2 = 9.807;
+
+function setPDensity(val) { document.getElementById('p-density-c').value = val; }
+
+function pCalc() {
+  const massE = parseFloat(document.getElementById('p-mass-c').value);
+  const dens  = parseFloat(document.getElementById('p-density-c').value);
+  try {
+    if (isNaN(massE)||isNaN(dens)) throw new Error('Enter both planetary mass and mean density.');
+    if (massE<=0||dens<=0) throw new Error('Values must be positive.');
+    const M_kg   = massE * M_EARTH_KG;
+    const rho    = dens * 1000;
+    const R_m    = Math.pow((3*M_kg)/(4*Math.PI*rho), 1/3);
+    const R_e    = R_m / R_EARTH_M;
+    const g_surf = (G_CONST * M_kg) / (R_m * R_m);
+    const g_rel  = g_surf / g_EARTH_MS2;
+    showCalcResult('p-result-c','p-result-label-c','p-result-value-c','p-result-note-c',
+      false,'Radius & Surface Gravity',
+      `R = ${calcFmt(R_e)} R⊕   |   g = ${calcFmt(g_rel)} g⊕`,
+      `M: ${massE} M⊕ · ρ: ${dens} g/cm³ → R = ${calcFmt(R_m/1e6)}×10⁶ m, g = ${calcFmt(g_surf)} m/s²`);
+  } catch(e) {
+    showCalcResult('p-result-c','p-result-label-c','p-result-value-c','p-result-note-c',
+      true,'','',e.message);
+  }
+}
+
+// Enter key support for calculator tab inputs
+document.querySelectorAll('.kfield').forEach(inp => {
+  inp.addEventListener('keydown', e => { if (e.key==='Enter') kCalc(); });
+});
+document.querySelectorAll('.pfield').forEach(inp => {
+  inp.addEventListener('keydown', e => { if (e.key==='Enter') pCalc(); });
 });
 
 // ───────────────────────────────────────────────────────────────────
