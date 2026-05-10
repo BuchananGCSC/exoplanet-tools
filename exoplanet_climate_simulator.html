@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌍 Exoplanet Climate Simulator</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.0/plotly.min.js"></script>
+<script>
+  if (typeof Plotly === 'undefined') {
+    document.write('<script src="https://unpkg.com/plotly.js-dist@2.27.0/plotly.min.js"><\/script>');
+  }
+</script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --orange: #e8962c;
+    --purple: #a371f7;
+    --cyan: #39d0f7;
+    --font: 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  header {
+    background: linear-gradient(135deg, #0d1117 0%, #1a1f2e 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: calc(100vh - 70px);
+  }
+  /* SIDEBAR */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .section-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .slider-group { display: flex; flex-direction: column; gap: 12px; }
+  .slider-row { display: flex; flex-direction: column; gap: 4px; }
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .slider-label span { color: var(--text); font-weight: 500; font-size: 13px; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(88,166,255,0.4);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 6px rgba(88,166,255,0.4);
+  }
+  select {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* STATUS BADGES */
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .badge-green { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .badge-red { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+  .badge-blue { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+  .badge-purple { background: rgba(163,113,247,0.15); color: var(--purple); border: 1px solid rgba(163,113,247,0.3); }
+
+  /* STAT GRID */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat-value { font-size: 16px; font-weight: 600; color: var(--text); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat-unit { font-size: 10px; color: var(--muted); }
+
+  /* TABS */
+  .main-area { overflow: hidden; display: flex; flex-direction: column; }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 0 16px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+    padding: 16px;
+  }
+  .tab-content.active { display: flex; flex-direction: column; gap: 12px; }
+  .plot-container { flex: 1; min-height: 0; }
+  .record-block {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .record-block strong { color: var(--accent); display: block; margin-bottom: 6px; font-size: 13px; }
+  .record-block .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+  .record-block .kv { display: flex; gap: 6px; }
+  .record-block .k { color: var(--muted); }
+  .record-block .v { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .warn { color: var(--yellow); background: rgba(210,153,34,0.08); border-color: var(--yellow); }
+  .info-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🌍 Exoplanet Climate Simulator</h1>
+    <p>Adjust sliders — plots update instantly. No install required.</p>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div>
+      <div class="section-header">⭐ Star</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Quick pick from handout star list</div>
+          <select id="sel-star">
+            <option value="">— enter mass manually —</option>
+            <option value="0.08">TRAPPIST-1 (M8, 0.08 M☉)</option>
+            <option value="0.12">Proxima Centauri (M5.5, 0.12 M☉)</option>
+            <option value="0.16">Barnard's Star (M4, 0.16 M☉)</option>
+            <option value="0.33">Gliese 667 C (M1.5, 0.33 M☉)</option>
+            <option value="0.45">Gliese 832 (M1, 0.45 M☉)</option>
+            <option value="0.70">61 Cygni A (K5V, 0.70 M☉)</option>
+            <option value="0.73">HD 40307 (K2.5V, 0.73 M☉)</option>
+            <option value="0.82">Epsilon Eridani (K2V, 0.82 M☉)</option>
+            <option value="0.91">55 Cancri (G8-K7V, 0.91 M☉)</option>
+            <option value="1.04">Kepler-452 (G2V, 1.04 M☉)</option>
+            <option value="1.28">Upsilon Andromedae (F8V, 1.28 M☉)</option>
+          </select>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Stellar Mass (M☉) <span id="lbl-mass">1.00</span></div>
+          <input type="range" id="sl-mass" min="0.08" max="2.0" step="0.01" value="1.0">
+        </div>
+      </div>
+      <div class="badge-row" style="margin-top:10px">
+        <span class="badge badge-blue" id="badge-type">G-type</span>
+        <span class="badge badge-purple" id="badge-lum">1.000 L☉</span>
+        <span class="badge badge-yellow" id="badge-life">~10 Gyr</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-header">🪐 Orbit</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Orbital Distance (AU) <span id="lbl-dist">1.00</span></div>
+          <input type="range" id="sl-dist" min="0.01" max="4.0" step="0.01" value="1.0">
+        </div>
+      </div>
+      <div class="badge-row" style="margin-top:10px">
+        <span class="badge badge-green" id="badge-hz">In HZ</span>
+        <span class="badge badge-blue" id="badge-lock">Not Locked</span>
+        <span class="badge badge-yellow" id="badge-flux">S₀ = 1365 W/m²</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-header">🌡️ Climate</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">CO₂ (ppm) <span id="lbl-co2">400</span></div>
+          <input type="range" id="sl-co2" min="70" max="10000" step="50" value="400">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Planet Type
+          </div>
+          <select id="sel-planet">
+            <option value="earth">Earth-Twin</option>
+            <option value="desert">Desert World</option>
+            <option value="ocean">Ocean Super-Earth</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-header">🔄 Rotating (5A)</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Obliquity (°) <span id="lbl-obl">23.4</span></div>
+          <input type="range" id="sl-obl" min="0" max="90" step="0.5" value="23.4">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Eccentricity <span id="lbl-ecc">0.00</span></div>
+          <input type="range" id="sl-ecc" min="0" max="0.8" step="0.01" value="0.0">
+        </div>
+      </div>
+      <div class="badge-row" style="margin-top:8px">
+        <span class="badge badge-blue" id="badge-obl-regime">Low-tilt — Eckert IV map</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-header">🔒 Tidally Locked (5B)</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Diffusion D <span id="lbl-diff">0.20</span></div>
+          <input type="range" id="sl-diff" min="0.01" max="0.7" step="0.01" value="0.2">
+        </div>
+      </div>
+    </div>
+
+    <!-- KEY NUMBERS -->
+    <div>
+      <div class="section-header">📋 Key Numbers</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">HZ Inner</div>
+          <div class="stat-value" id="stat-hzin">0.909</div>
+          <div class="stat-unit">AU</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">HZ Outer</div>
+          <div class="stat-value" id="stat-hzout">2.000</div>
+          <div class="stat-unit">AU</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Lock Radius</div>
+          <div class="stat-value" id="stat-lock">0.368</div>
+          <div class="stat-unit">AU</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">EBM Baseline</div>
+          <div class="stat-value" id="stat-teq">14.5</div>
+          <div class="stat-unit">°C</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MAIN AREA -->
+  <div class="main-area">
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('t1')">📡 Section 1: Star</div>
+      <div class="tab" onclick="showTab('t2')">🪐 Section 2: Orbit</div>
+      <div class="tab" onclick="showTab('t3')">🌡️ Sections 3–4: EBM</div>
+      <div class="tab" onclick="showTab('t5a')">🔄 Section 5A: Rotating</div>
+      <div class="tab" onclick="showTab('t5b')">🔒 Section 5B: TL</div>
+      <div class="tab" onclick="showTab('t6')">📊 Section 6: Summary</div>
+    </div>
+
+    <!-- TAB 1: STAR -->
+    <div class="tab-content active" id="t1">
+      <div class="plot-container" id="plot-hz"></div>
+      <div class="record-block" id="rec1">
+        <strong>📋 Record — Section 1 values to copy into your handout</strong>
+        <div class="vals" id="rec1-vals"></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: ORBIT -->
+    <div class="tab-content" id="t2">
+      <div class="plot-container" id="plot-orbit"></div>
+      <div class="record-block" id="rec2">
+        <strong>📋 Record — Section 2 values to copy into your handout</strong>
+        <div class="vals" id="rec2-vals"></div>
+      </div>
+    </div>
+
+    <!-- TAB 3: EBM -->
+    <div class="tab-content" id="t3">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0">
+        <div id="plot-co2"></div>
+        <div id="plot-albedo"></div>
+      </div>
+      <div class="record-block" id="rec3">
+        <strong>📋 Record — Sections 3–4 values to copy into your handout</strong>
+        <div class="vals" id="rec3-vals"></div>
+      </div>
+    </div>
+
+    <!-- TAB 5A: ROTATING -->
+    <div class="tab-content" id="t5a">
+      <div class="plot-container" id="plot-5a"></div>
+      <div class="record-block" id="rec5a">
+        <strong>📋 Record — Section 5A values to copy into your handout</strong>
+        <div class="vals" id="rec5a-vals"></div>
+      </div>
+    </div>
+
+    <!-- TAB 5B: TL -->
+    <div class="tab-content" id="t5b">
+      <div class="plot-container" id="plot-5b"></div>
+      <div class="record-block" id="rec5b">
+        <strong>📋 Record — Section 5B values to copy into your handout</strong>
+        <div class="vals" id="rec5b-vals"></div>
+      </div>
+    </div>
+
+    <!-- TAB 6: SUMMARY -->
+    <div class="tab-content" id="t6">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0">
+        <div id="plot-6a"></div>
+        <div id="plot-6b"></div>
+      </div>
+      <div class="record-block" id="rec6">
+        <strong>📋 Record — Section 6 full climate summary (Phase 4 Environmental Audit)</strong>
+        <div class="vals" id="rec6-vals"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  PHYSICS ENGINE  (ported from exoplanet_climate_scaffolded.ipynb)
+// ═══════════════════════════════════════════════════════════════════
+
+const S0_SUN   = 1365.2;
+const A_OLR    = 210.0;
+const B_OLR    = 2.0;
+const a_ghg    = 5.35;
+const CO2_ref  = 280.0;
+const alpha0   = 0.30;
+const alpha_ice= 0.62;
+const T_freeze = 263.15;
+const C_heat   = 1025.0 * 3994.0 * 70.0;
+
+const PLANET_ALBEDO = { earth: 0.30, desert: 0.35, ocean: 0.25 };
+
+const SPECTRAL = [
+  [16.0,'O-type','30,000–50,000+'],[2.1,'B-type','10,000–30,000'],
+  [1.4,'A-type','7,500–10,000'],[1.04,'F-type','6,000–7,500'],
+  [0.8,'G-type','5,200–6,000'],[0.45,'K-type','3,700–5,200'],
+  [0.08,'M-type','2,400–3,700'],[0.0,'Sub-stellar','<2,400'],
+];
+
+function stellarLuminosity(mass) { return Math.pow(mass, 3.5); }
+
+// Approximate MS lifespan: t ∝ M/L = M^(-2.5), anchored at Sun = 10 Gyr
+function stellarLifespan(mass) {
+  const gyr = 10.0 * Math.pow(mass, -2.5);
+  if (gyr > 200) return '>200 Gyr';
+  if (gyr > 100) return '~' + Math.round(gyr/50)*50 + ' Gyr';
+  if (gyr > 20)  return '~' + Math.round(gyr/10)*10 + ' Gyr';
+  return '~' + gyr.toFixed(1) + ' Gyr';
+}
+
+function habitableZone(mass) {
+  const lum = stellarLuminosity(mass);
+  return [Math.sqrt(lum) / 1.10, Math.sqrt(lum) / 0.50];
+}
+
+function stellarType(mass) {
+  for (const [minM, sp, temp] of SPECTRAL) {
+    if (mass >= minM) return [sp, temp];
+  }
+  return ['Unknown','Unknown'];
+}
+
+function tidalLockRadius(mass, planetMass=1.0) {
+  return 0.3681 * Math.pow((mass / 0.665)**2 / planetMass, 1/6);
+}
+
+function effectiveS0(mass, aAU) {
+  return S0_SUN * stellarLuminosity(mass) / (aAU * aAU);
+}
+
+function run0dEBM(T0_K, CO2, S0, albedo_warm=0.30, nYears=300, dtYr=0.5) {
+  const dt = dtYr * 3.15e7;
+  const steps = Math.floor(nYears / dtYr);
+  let T = T0_K;
+  const ts = [0], Ts = [T];
+  for (let i = 0; i < steps; i++) {
+    const alb = T < T_freeze ? alpha_ice : albedo_warm;
+    const asr = S0 * (1 - alb) / 4;
+    const olr = A_OLR + B_OLR * (T - 273.15);
+    const ghg = a_ghg * Math.log(CO2 / CO2_ref);
+    T += dt * (asr - olr + ghg) / C_heat;
+    ts.push((i+1)*dtYr);
+    Ts.push(T);
+  }
+  return [ts, Ts];
+}
+
+function latProfileRotating(S0, CO2, obliquityDeg, planetType='earth') {
+  const alb = PLANET_ALBEDO[planetType];
+  const [, Ts] = run0dEBM(288, CO2, S0, alb);
+  const Tgm = Ts[Ts.length-1] - 273.15;
+  // Latitudinal gradient: stronger for lower obliquity
+  const dT = 45.0 * Math.pow(1.0 - obliquityDeg/90.0, 0.7);
+  const lats = [], temps = [];
+  for (let lat = -90; lat <= 90; lat += 2) {
+    lats.push(lat);
+    const latRad = lat * Math.PI / 180;
+    temps.push(Tgm + dT * (Math.cos(latRad) - 0.5));
+  }
+  return [lats, temps];
+}
+
+function tlProfile(S0, CO2, D, planetType='earth') {
+  const alb = PLANET_ALBEDO[planetType];
+  const [, Ts] = run0dEBM(288, CO2, S0, alb);
+  const Tgm = Ts[Ts.length-1] - 273.15;
+  // Day-night contrast shrinks with stronger diffusion
+  const dTDayNight = 80.0 / (1.0 + 3*D);
+  // angles from -180 (anti) to +180 (sub again), 0=terminator
+  // Map to: -90=antistellar, 0=terminator, +90=substellar
+  const angles = [], temps = [];
+  for (let a = -90; a <= 90; a += 2) {
+    angles.push(a);
+    const rad = a * Math.PI / 180;
+    temps.push(Tgm + dTDayNight * Math.sin(rad));
+  }
+  return [angles, temps];
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOTLY THEME
+// ───────────────────────────────────────────────────────────────────
+const LAYOUT_BASE = {
+  paper_bgcolor: '#161b22',
+  plot_bgcolor: '#0d1117',
+  font: { color: '#e6edf3', size: 12, family: 'Segoe UI, system-ui, sans-serif' },
+  margin: { t: 40, r: 20, b: 50, l: 60 },
+  xaxis: { gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#8b949e', zerolinecolor: '#30363d' },
+  yaxis: { gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#8b949e', zerolinecolor: '#30363d' },
+  legend: { bgcolor: 'rgba(22,27,34,0.8)', bordercolor: '#30363d', borderwidth: 1 },
+};
+
+function layout(extra={}) {
+  return Object.assign({}, LAYOUT_BASE,
+    { xaxis: Object.assign({}, LAYOUT_BASE.xaxis, extra.xaxis||{}),
+      yaxis: Object.assign({}, LAYOUT_BASE.yaxis, extra.yaxis||{}),
+    }, extra);
+}
+
+const CFG = { responsive: true, displayModeBar: false };
+
+// ───────────────────────────────────────────────────────────────────
+//  STATE
+// ───────────────────────────────────────────────────────────────────
+let state = {
+  mass: 1.0, dist: 1.0, co2: 400, planet: 'earth',
+  obl: 23.4, ecc: 0.0, diff: 0.2
+};
+let activeTab = 't1';
+
+// ───────────────────────────────────────────────────────────────────
+//  DERIVED
+// ───────────────────────────────────────────────────────────────────
+function derive() {
+  const { mass, dist, co2, planet, obl, ecc, diff } = state;
+  const lum = stellarLuminosity(mass);
+  const life = stellarLifespan(mass);
+  const [hzIn, hzOut] = habitableZone(mass);
+  const [spType, spTemp] = stellarType(mass);
+  const lockR = tidalLockRadius(mass);
+  const S0 = effectiveS0(mass, dist);
+  const inHz = dist >= hzIn && dist <= hzOut;
+  const isLocked = dist <= lockR;
+  const alb = PLANET_ALBEDO[planet];
+  const [, Ts] = run0dEBM(288, co2, S0, alb);
+  const Teq = Ts[Ts.length-1] - 273.15;
+  const hzMod = inHz ? 0 : (dist < hzIn ? +15 : -15); // HZ position modifier
+
+  let regime;
+  if (isLocked) regime = 'TIDALLY LOCKED';
+  else if (obl > 54) regime = 'HIGH OBLIQUITY';
+  else regime = 'STANDARD ROTATING';
+
+  return { lum, life, hzIn, hzOut, spType, spTemp, lockR, S0, inHz, isLocked, Teq, hzMod, regime };
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  SIDEBAR UPDATE
+// ───────────────────────────────────────────────────────────────────
+function updateSidebar() {
+  const { mass, dist, co2, obl, ecc, diff } = state;
+  const d = derive();
+
+  document.getElementById('lbl-mass').textContent = mass.toFixed(2);
+  document.getElementById('lbl-dist').textContent = dist.toFixed(2);
+  document.getElementById('lbl-co2').textContent = co2.toFixed(0);
+  document.getElementById('lbl-obl').textContent = obl.toFixed(1);
+  document.getElementById('lbl-ecc').textContent = ecc.toFixed(2);
+  document.getElementById('lbl-diff').textContent = diff.toFixed(2);
+
+  document.getElementById('badge-type').textContent = d.spType;
+  document.getElementById('badge-lum').textContent = d.lum.toFixed(3)+' L☉';
+  document.getElementById('badge-life').textContent = d.life;
+
+  const hzBadge = document.getElementById('badge-hz');
+  hzBadge.textContent = d.inHz ? 'In HZ ✓' : 'Outside HZ ✗';
+  hzBadge.className = 'badge ' + (d.inHz ? 'badge-green' : 'badge-red');
+
+  const lockBadge = document.getElementById('badge-lock');
+  lockBadge.textContent = d.isLocked ? 'Tidally Locked ⚠' : 'Not Locked ✓';
+  lockBadge.className = 'badge ' + (d.isLocked ? 'badge-yellow' : 'badge-blue');
+
+  document.getElementById('badge-flux').textContent = 'S₀ = '+d.S0.toFixed(0)+' W/m²';
+
+  // Obliquity regime badge
+  const oblBadge = document.getElementById('badge-obl-regime');
+  if (d.isLocked) {
+    oblBadge.textContent = 'Planet is tidally locked — use Section 5B';
+    oblBadge.className = 'badge badge-yellow';
+  } else if (obl > 54) {
+    oblBadge.textContent = 'High obliquity (>54°) — summer/winter hemisphere map';
+    oblBadge.className = 'badge badge-red';
+  } else {
+    oblBadge.textContent = 'Low tilt — latitude-band map (Eckert IV)';
+    oblBadge.className = 'badge badge-blue';
+  }
+
+  document.getElementById('stat-hzin').textContent = d.hzIn.toFixed(3);
+  document.getElementById('stat-hzout').textContent = d.hzOut.toFixed(3);
+  document.getElementById('stat-lock').textContent = d.lockR.toFixed(3);
+  document.getElementById('stat-teq').textContent = d.Teq.toFixed(1);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTION 1 — HZ DIAGRAM
+// ───────────────────────────────────────────────────────────────────
+function plotHz() {
+  const { mass } = state;
+  const d = derive();
+  const masses = linspace(0.08, 2.0, 300);
+  const innerHz = masses.map(m => habitableZone(m)[0]);
+  const outerHz = masses.map(m => habitableZone(m)[1]);
+  const lockR   = masses.map(m => tidalLockRadius(m));
+
+  const traces = [
+    { x: innerHz, y: masses, mode:'lines', name:'HZ inner (moist greenhouse)',
+      line:{color:'#3fb950', width:2} },
+    { x: outerHz, y: masses, mode:'lines', name:'HZ outer (max greenhouse)',
+      line:{color:'#3fb950', width:2, dash:'dash'} },
+    { x: lockR, y: masses, mode:'lines', name:'Tidal locking radius',
+      line:{color:'#f85149', width:2} },
+    { x: [...innerHz, ...outerHz.slice().reverse()],
+      y: [...masses, ...masses.slice().reverse()],
+      fill:'toself', fillcolor:'rgba(63,185,80,0.12)', mode:'none',
+      name:'Habitable Zone', showlegend:true },
+    { x: [...lockR, masses.map(()=>0).reverse()].concat([0]),
+      y: [...masses, ...masses.slice().reverse()],
+      fill:'toself', fillcolor:'rgba(248,81,73,0.08)', mode:'none',
+      name:'Likely tidally locked', showlegend:true },
+    { x:[1.0], y:[1.0], mode:'markers',
+      marker:{color:'#58a6ff', size:14, symbol:'star'},
+      name:'Earth' },
+    { x:[state.dist], y:[mass], mode:'markers',
+      marker:{color:'#e8962c', size:12, symbol:'circle'},
+      name:`Your planet (${mass.toFixed(2)} M☉, ${state.dist.toFixed(2)} AU)` },
+  ];
+
+  const lines = [
+    { type:'line', x0:0, x1:3.5, y0:mass, y1:mass,
+      line:{color:'rgba(88,166,255,0.5)', width:1.5, dash:'dot'} }
+  ];
+
+  Plotly.react('plot-hz', traces, layout({
+    title:{ text:'Habitable Zone & Tidal Locking', font:{size:14} },
+    xaxis:{ title:'Orbital Distance (AU)', range:[0,3.5] },
+    yaxis:{ title:'Stellar Mass (M☉)', range:[0.08,2.0] },
+    shapes: lines,
+    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top' },
+    margin:{ t:50, r:20, b:60, l:70 },
+  }), CFG);
+
+  // Record block
+  const rec = document.getElementById('rec1-vals');
+  rec.innerHTML = kv([
+    ['Spectral type', d.spType+' (~'+d.spTemp+' K)'],
+    ['Luminosity', d.lum.toFixed(4)+' L☉'],
+    ['Estimated lifespan', d.life],
+    ['HZ inner edge', d.hzIn.toFixed(3)+' AU'],
+    ['HZ outer edge', d.hzOut.toFixed(3)+' AU'],
+    ['Tidal lock radius', d.lockR.toFixed(3)+' AU'],
+    ['⚠ Note', d.lockR >= d.hzIn ? 'Inner HZ inside lock radius (M-dwarf!)' : 'Lock radius < HZ inner'],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTION 2 — ORBIT
+// ───────────────────────────────────────────────────────────────────
+function plotOrbit() {
+  const d = derive();
+  const { mass, dist } = state;
+  const [hzIn, hzOut] = [d.hzIn, d.hzOut];
+
+  // Draw orbit ring + HZ annulus
+  const theta = linspace(0, 2*Math.PI, 200);
+  const cos = theta.map(t => Math.cos(t));
+  const sin = theta.map(t => Math.sin(t));
+
+  function ring(r) { return { x: cos.map(c=>c*r), y: sin.map(s=>s*r) }; }
+  const rIn = ring(hzIn), rOut = ring(hzOut), rOrb = ring(dist);
+
+  const traces = [
+    // HZ fill
+    { x:[...rIn.x,...rOut.x.reverse()], y:[...rIn.y,...rOut.y.reverse()],
+      fill:'toself', fillcolor:'rgba(63,185,80,0.12)', mode:'none', name:'Habitable Zone' },
+    // HZ edges
+    { ...rIn, mode:'lines', name:'HZ inner', line:{color:'#3fb950', width:1.5} },
+    { ...rOut, mode:'lines', name:'HZ outer', line:{color:'#3fb950', width:1.5, dash:'dash'} },
+    // Star
+    { x:[0], y:[0], mode:'markers',
+      marker:{color:'#fbbf24', size:20, symbol:'circle'},
+      name:`Star (${mass.toFixed(2)} M☉)` },
+    // Lock radius
+    { ...ring(d.lockR), mode:'lines', name:'Tidal lock radius',
+      line:{color:'#f85149', width:1.5, dash:'dot'} },
+    // Planet
+    { ...rOrb, mode:'lines', line:{color:'rgba(88,166,255,0.25)', width:1}, name:'Orbit', showlegend:true },
+    { x:[dist], y:[0], mode:'markers',
+      marker:{color:'#58a6ff', size:14, symbol:'circle'},
+      name:`Your planet (${dist.toFixed(2)} AU)` },
+  ];
+
+  const maxR = Math.max(hzOut, dist) * 1.2;
+  Plotly.react('plot-orbit', traces, layout({
+    title:{ text:'Orbit vs Habitable Zone', font:{size:14} },
+    xaxis:{ title:'AU', range:[-maxR, maxR], scaleanchor:'y' },
+    yaxis:{ title:'AU', range:[-maxR, maxR] },
+    legend:{ x:0.01, y:0.99 },
+    margin:{ t:50, r:20, b:60, l:70 },
+  }), CFG);
+
+  const rec = document.getElementById('rec2-vals');
+  rec.innerHTML = kv([
+    ['Stellar flux (S₀)', d.S0.toFixed(1)+' W/m²'],
+    ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
+    ['Tidally locked?', d.isLocked ? '✓ Yes' : '✗ No'],
+    ['HZ position modifier', (d.hzMod >= 0 ? '+' : '')+d.hzMod+' °C'],
+    ['Regime', d.regime],
+    ['Map template', d.isLocked ? 'Polar hemispheres (TL)' : 'Eckert IV'],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTIONS 3–4 — EBM
+// ───────────────────────────────────────────────────────────────────
+function plotEBM() {
+  const { co2, planet } = state;
+  const d = derive();
+  const S0 = d.S0;
+  const alb = PLANET_ALBEDO[planet];
+
+  // CO₂ sensitivity
+  const co2Vals = logspace(Math.log10(70), Math.log10(4480), 80);
+  const Teq_co2 = co2Vals.map(c => {
+    const [,Ts] = run0dEBM(288, c, S0, alb);
+    return Ts[Ts.length-1] - 273.15;
+  });
+
+  const refs = [
+    {label:'280 ppm', co2:280, color:'#1565C0'},
+    {label:'420 ppm', co2:420, color:'#3fb950'},
+    {label:'560 ppm', co2:560, color:'#FB8C00'},
+    {label:'1120 ppm', co2:1120, color:'#E53935'},
+  ];
+  refs.forEach(r => {
+    const [,Ts] = run0dEBM(288, r.co2, S0, alb);
+    r.T = Ts[Ts.length-1] - 273.15;
+  });
+
+  const T280 = refs[0].T, T560 = refs[2].T;
+  const ECS = T560 - T280;
+
+  const traces_co2 = [
+    { x:co2Vals, y:Teq_co2, mode:'lines', name:'Equilibrium T', line:{color:'#e6edf3', width:2.5} },
+    { x:[70,4480], y:[0,0], mode:'lines', name:'0°C (freezing)', line:{color:'#58a6ff', dash:'dash', width:1.2} },
+    { x:[70,4480], y:[100,100], mode:'lines', name:'100°C (boiling)', line:{color:'#f85149', dash:'dash', width:1.2} },
+    { x:[co2], y:[d.Teq], mode:'markers', name:`Your CO₂ (${co2} ppm)`,
+      marker:{color:'#a371f7', size:12, symbol:'circle'} },
+    ...refs.map(r => ({
+      x:[r.co2], y:[r.T], mode:'markers', name:r.label+' → '+r.T.toFixed(1)+'°C',
+      marker:{color:r.color, size:9}
+    }))
+  ];
+
+  Plotly.react('plot-co2', traces_co2, layout({
+    title:{ text:'CO₂ Sensitivity', font:{size:13} },
+    xaxis:{ title:'CO₂ (ppm)', type:'log' },
+    yaxis:{ title:'Temperature (°C)' },
+    legend:{ font:{size:9} },
+    margin:{ t:45, r:10, b:60, l:60 },
+  }), CFG);
+
+  // Ice-albedo bifurcation
+  const S_pcts = linspace(72, 112, 60);
+  const Twarm = S_pcts.map(pct => {
+    const [,Ts] = run0dEBM(288, 280, S0*pct/100, alb);
+    return Ts[Ts.length-1] - 273.15;
+  });
+  const Tcold = S_pcts.map(pct => {
+    const [,Ts] = run0dEBM(215, 280, S0*pct/100, alb);
+    return Ts[Ts.length-1] - 273.15;
+  });
+
+  const traces_alb = [
+    { x:S_pcts, y:Twarm, mode:'lines', name:'Starting warm (ice-free)', line:{color:'#E53935', width:2.5} },
+    { x:S_pcts, y:Tcold, mode:'lines', name:'Starting frozen (snowball)', line:{color:'#1565C0', width:2.5, dash:'dash'} },
+    { x:[100,100], y:[-100,200], mode:'lines', name:"Your planet's flux (100%)", line:{color:'#e8962c', dash:'dot', width:2} },
+    { x:S_pcts, y:S_pcts.map(()=>0), mode:'lines', name:'0°C', line:{color:'#58a6ff', dash:'dash', width:1.2} },
+  ];
+
+  Plotly.react('plot-albedo', traces_alb, layout({
+    title:{ text:'Ice-Albedo Bifurcation', font:{size:13} },
+    xaxis:{ title:'Stellar flux (% of actual)' },
+    yaxis:{ title:'Equilibrium Temperature (°C)' },
+    legend:{ font:{size:9} },
+    margin:{ t:45, r:10, b:60, l:60 },
+  }), CFG);
+
+  const [,TsWarm] = run0dEBM(288, 280, S0, alb);
+  const [,TsCold] = run0dEBM(215, 280, S0, alb);
+  const Tw = TsWarm[TsWarm.length-1]-273.15, Tc = TsCold[TsCold.length-1]-273.15;
+
+  const rec = document.getElementById('rec3-vals');
+  rec.innerHTML = kv([
+    ['Baseline T (280 ppm, warm start)', T280.toFixed(1)+' °C'],
+    ['Your CO₂ equilibrium T', d.Teq.toFixed(1)+' °C'],
+    ['ECS (2×CO₂ warming)', '+'+ECS.toFixed(2)+' °C'],
+    ['Ice-free equilibrium', Tw.toFixed(1)+' °C'],
+    ['Snowball equilibrium', Tc.toFixed(1)+' °C'],
+    ['Two stable climates?', Math.abs(Tw-Tc) > 2 ? 'Yes (hysteresis region)' : 'No (single stable state)'],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTION 5A — ROTATING
+// ───────────────────────────────────────────────────────────────────
+function plot5A() {
+  const { co2, planet, obl, ecc } = state;
+  const d = derive();
+  const S0 = d.S0;
+
+  const [lats, Tyour] = latProfileRotating(S0, co2, obl, planet);
+  const [, TEarth] = latProfileRotating(S0_SUN, 280, 23.4, 'earth');
+  const [, TnoObl] = latProfileRotating(S0, co2, 0, planet);
+
+  // Ice line = first latitude where T > -10°C (from pole inward)
+  function iceLine(temps) {
+    for (let i=0; i<lats.length/2; i++) {
+      if (temps[i] > -10) return lats[i];
+    }
+    return -90;
+  }
+  const iceYour = iceLine(Tyour);
+  const Tgm = Tyour.reduce((a,b)=>a+b,0)/Tyour.length;
+  const Teq = Tyour[Math.round(Tyour.length/2)];
+  const Tpole = (Tyour[0]+Tyour[Tyour.length-1])/2;
+
+  const traces = [
+    { x:lats, y:Tyour, mode:'lines',
+      name:`Your planet (${obl.toFixed(1)}° obliquity, ${co2} ppm)`,
+      line:{color:'#58a6ff', width:2.5} },
+    { x:lats, y:TnoObl, mode:'lines', name:'Zero obliquity (reference)',
+      line:{color:'#8b949e', width:1.5, dash:'dash'} },
+    { x:lats, y:lats.map(()=>-10), mode:'lines', name:'Ice threshold (−10°C)',
+      line:{color:'#1565C0', dash:'dot', width:1.5} },
+    { x:lats, y:lats.map(()=>100), mode:'lines', name:'Boiling (100°C)',
+      line:{color:'#f85149', dash:'dot', width:1.5} },
+    { x:[0], y:[Teq], mode:'markers', name:'Equator',
+      marker:{color:'#fbbf24', size:10} },
+    { x:[-90, 90], y:[Tpole, Tpole], mode:'markers', name:'Poles',
+      marker:{color:'#a371f7', size:10} },
+  ];
+
+  // Shade liquid water zone
+  const liqX = [], liqY = [];
+  lats.forEach((lat, i) => {
+    if (Tyour[i] > -10 && Tyour[i] < 100) { liqX.push(lat); liqY.push(Tyour[i]); }
+  });
+
+  Plotly.react('plot-5a', traces, layout({
+    title:{ text:`Rotating Planet: Latitude–Temperature Profile`, font:{size:14} },
+    xaxis:{ title:'Latitude (°)',
+      tickvals:[-90,-60,-30,0,30,60,90],
+      ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'] },
+    yaxis:{ title:'Surface Temperature (°C)' },
+    legend:{ x:0.01, y:0.01 },
+    margin:{ t:50, r:20, b:70, l:70 },
+  }), CFG);
+
+  const mapTemplate5A = obl > 54
+    ? 'Eckert IV — label summer/winter hemispheres'
+    : 'Eckert IV — label latitude climate bands';
+
+  const rec = document.getElementById('rec5a-vals');
+  rec.innerHTML = kv([
+    ['Obliquity regime', obl > 54 ? 'HIGH OBLIQUITY (>54°) — strong seasonal contrast' : 'Standard rotating'],
+    ['Global mean temperature', Tgm.toFixed(1)+' °C'],
+    ['Equatorial temperature', Teq.toFixed(1)+' °C'],
+    ['Polar temperature', Tpole.toFixed(1)+' °C'],
+    ['Ice line latitude', iceYour < -89 ? 'Fully frozen' : (Math.abs(iceYour).toFixed(0)+'°')],
+    ['Habitable latitude range', iceYour < -89 ? 'None (snowball)' : Math.abs(iceYour).toFixed(0)+'°–90° each hemisphere'],
+    ['Map template', mapTemplate5A],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTION 5B — TIDALLY LOCKED
+// ───────────────────────────────────────────────────────────────────
+function plot5B() {
+  const { co2, planet, diff } = state;
+  const d = derive();
+  const S0 = d.S0;
+  const D_vals = [0.05, 0.2, 0.5, diff].sort((a,b)=>a-b);
+  const colors = ['#1565C0', '#3fb950', '#FB8C00', '#E53935'];
+
+  const traces = [];
+  let yourAngles, yourTemps;
+  D_vals.forEach((D, idx) => {
+    const [angles, temps] = tlProfile(S0, co2, D, planet);
+    const isUser = Math.abs(D - diff) < 0.005;
+    traces.push({
+      x: angles, y: temps, mode: 'lines',
+      name: isUser ? `D = ${D.toFixed(2)} ← your choice` : `D = ${D.toFixed(2)}`,
+      line: { color: colors[idx], width: isUser ? 3 : 1.5 }
+    });
+    if (isUser) { yourAngles = angles; yourTemps = temps; }
+  });
+  traces.push({ x:[-90,90], y:[0,0], mode:'lines', name:'Ice threshold (0°C)',
+    line:{color:'#58a6ff', dash:'dot', width:1.5} });
+  traces.push({ x:[-90,90], y:[100,100], mode:'lines', name:'Boiling (100°C)',
+    line:{color:'#f85149', dash:'dot', width:1.5} });
+  traces.push({ x:[0,0], y:[-100,200], mode:'lines', name:'Terminator',
+    line:{color:'#8b949e', dash:'dash', width:1} });
+
+  Plotly.react('plot-5b', traces, layout({
+    title:{ text:'Tidally Locked: Day–Night Temperature Profile', font:{size:14} },
+    xaxis:{ title:'Position (° from terminator)',
+      tickvals:[-90,-60,-30,0,30,60,90],
+      ticktext:['Antistellar (−90°)','','','Terminator (0°)','','','Substellar (+90°)'] },
+    yaxis:{ title:'Surface Temperature (°C)' },
+    legend:{ x:0.01, y:0.01 },
+    margin:{ t:50, r:20, b:90, l:70 },
+  }), CFG);
+
+  // Key temps for your D
+  if (!yourAngles) { [yourAngles, yourTemps] = tlProfile(S0, co2, diff, planet); }
+  const Tsub  = yourTemps[yourTemps.length-1];
+  const Tterm = yourTemps[Math.round(yourTemps.length/2)];
+  const Tanti = yourTemps[0];
+  const Tgm = yourTemps.reduce((a,b)=>a+b,0)/yourTemps.length;
+  const habFrac = yourTemps.filter(t=>t>-10 && t<100).length / yourTemps.length;
+
+  const rec = document.getElementById('rec5b-vals');
+  rec.innerHTML = kv([
+    ['Substellar temperature', Tsub.toFixed(1)+' °C'],
+    ['Terminator temperature', Tterm.toFixed(1)+' °C'],
+    ['Antistellar temperature', Tanti.toFixed(1)+' °C'],
+    ['Global mean temperature', Tgm.toFixed(1)+' °C'],
+    ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
+    ['Map template', 'Polar hemispheres (day / night)'],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: SECTION 6 — SUMMARY
+// ───────────────────────────────────────────────────────────────────
+function plot6() {
+  const { co2, planet, obl, ecc, diff } = state;
+  const d = derive();
+  const S0 = d.S0;
+  const alb = PLANET_ALBEDO[planet];
+
+  // 0-D transient
+  const [ts, Ts] = run0dEBM(288, co2, S0, alb);
+  const TsC = Ts.map(t => t-273.15);
+
+  // Latitude or day/night profile
+  let xLabel, xVals, Tvals, xTickvals, xTicktext;
+  if (d.isLocked) {
+    [xVals, Tvals] = tlProfile(S0, co2, diff, planet);
+    xLabel = 'Position (° from terminator)';
+    xTickvals = [-90,-45,0,45,90];
+    xTicktext = ['Anti-stellar','','Terminator','','Sub-stellar'];
+  } else {
+    [xVals, Tvals] = latProfileRotating(S0, co2, obl, planet);
+    xLabel = 'Latitude (°)';
+    xTickvals = [-90,-60,-30,0,30,60,90];
+    xTicktext = ['90°S','60°S','30°S','Eq','30°N','60°N','90°N'];
+  }
+
+  const Tgm = Tvals.reduce((a,b)=>a+b,0)/Tvals.length;
+  const habFrac = Tvals.filter(t=>t>-10 && t<100).length / Tvals.length;
+  const Teq = TsC[TsC.length-1];
+
+  // Plot A: transient
+  Plotly.react('plot-6a', [
+    { x:ts, y:TsC, mode:'lines', name:'Surface temperature', line:{color:'#58a6ff', width:2.5} },
+    { x:[0,ts[ts.length-1]], y:[0,0], mode:'lines', name:'0°C', line:{color:'#1565C0',dash:'dash',width:1} },
+    { x:[0,ts[ts.length-1]], y:[100,100], mode:'lines', name:'100°C', line:{color:'#f85149',dash:'dash',width:1} },
+  ], layout({
+    title:{ text:'0-D EBM: Temperature Evolution', font:{size:13} },
+    xaxis:{ title:'Time (years)' },
+    yaxis:{ title:'Temperature (°C)' },
+    margin:{ t:45, r:10, b:60, l:65 },
+  }), CFG);
+
+  // Plot B: lat/TL profile
+  Plotly.react('plot-6b', [
+    { x:xVals, y:Tvals, mode:'lines', name:'Temperature profile', line:{color:'#58a6ff', width:2.5} },
+    { x:[xVals[0],xVals[xVals.length-1]], y:[-10,-10], mode:'lines', name:'Ice threshold',
+      line:{color:'#1565C0',dash:'dot',width:1.5} },
+    { x:[xVals[0],xVals[xVals.length-1]], y:[100,100], mode:'lines', name:'Boiling',
+      line:{color:'#f85149',dash:'dot',width:1.5} },
+    // Shade liquid water
+    { x:[...xVals.filter((x,i)=>Tvals[i]>-10 && Tvals[i]<100),
+          ...xVals.filter((x,i)=>Tvals[i]>-10 && Tvals[i]<100).reverse()],
+      y:[...Tvals.filter(t=>t>-10&&t<100),
+          ...Tvals.filter(t=>t>-10&&t<100).map(()=>-10)],
+      fill:'toself', fillcolor:'rgba(63,185,80,0.1)', mode:'none', name:'Liquid water possible' }
+  ], layout({
+    title:{ text:d.isLocked?'TL Day–Night Profile':'Latitude–Temperature Profile', font:{size:13} },
+    xaxis:{ title:xLabel, tickvals:xTickvals, ticktext:xTicktext },
+    yaxis:{ title:'Temperature (°C)' },
+    margin:{ t:45, r:10, b:90, l:65 },
+  }), CFG);
+
+  // Gravity estimate
+  const g_est = 9.8 * PLANET_ALBEDO[planet] < 0.27 ? 1.2 : PLANET_ALBEDO[planet] > 0.3 ? 0.9 : 1.0;
+  const g_label = planet === 'ocean' ? '~1.2× Earth' : planet === 'desert' ? '~0.9× Earth' : '~1.0× Earth';
+
+  const habitability = habFrac > 0.1 ? (Teq < 80 ? 'Potentially habitable' : 'Too hot globally') : 'Possibly snowball';
+
+  const rec = document.getElementById('rec6-vals');
+  rec.innerHTML = kv([
+    ['Regime', d.regime],
+    ['Stellar flux (S₀)', d.S0.toFixed(1)+' W/m²'],
+    ['0-D equilibrium temperature', Teq.toFixed(1)+' °C'],
+    ['Spatial global mean', Tgm.toFixed(1)+' °C'],
+    ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
+    ['Gravity estimate', g_label],
+    ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
+    ['Tidally locked?', d.isLocked ? '⚠ Yes' : '✓ No'],
+    ['Habitability flag', habitability],
+    ['Suggested map template', d.isLocked ? 'Polar hemispheres' : 'Eckert IV'],
+  ]);
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  HELPERS
+// ───────────────────────────────────────────────────────────────────
+function linspace(a, b, n) {
+  const arr = [];
+  for (let i=0; i<n; i++) arr.push(a + (b-a)*i/(n-1));
+  return arr;
+}
+function logspace(a, b, n) {
+  return linspace(a, b, n).map(x => Math.pow(10, x));
+}
+function kv(pairs) {
+  return pairs.map(([k,v]) =>
+    `<div class="kv"><span class="k">${k}:</span><span class="v">${v}</span></div>`
+  ).join('');
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  TAB ROUTING
+// ───────────────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    const tabs = ['t1','t2','t3','t5a','t5b','t6'];
+    if (tabs[i] === id) el.classList.add('active');
+  });
+  activeTab = id;
+  renderActive();
+}
+
+function renderActive() {
+  updateSidebar();
+  if (activeTab === 't1') plotHz();
+  else if (activeTab === 't2') plotOrbit();
+  else if (activeTab === 't3') plotEBM();
+  else if (activeTab === 't5a') plot5A();
+  else if (activeTab === 't5b') plot5B();
+  else if (activeTab === 't6') plot6();
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  SLIDER WIRING
+// ───────────────────────────────────────────────────────────────────
+document.getElementById('sel-star').addEventListener('change', e => {
+  if (e.target.value) {
+    state.mass = +e.target.value;
+    document.getElementById('sl-mass').value = state.mass;
+    renderActive();
+  }
+});
+document.getElementById('sl-mass').addEventListener('input', e => {
+  state.mass = +e.target.value;
+  document.getElementById('sel-star').value = ''; // clear picker when slider moves
+  renderActive();
+});
+document.getElementById('sl-dist').addEventListener('input', e => {
+  state.dist = +e.target.value; renderActive();
+});
+document.getElementById('sl-co2').addEventListener('input', e => {
+  state.co2 = +e.target.value; renderActive();
+});
+document.getElementById('sel-planet').addEventListener('change', e => {
+  state.planet = e.target.value; renderActive();
+});
+document.getElementById('sl-obl').addEventListener('input', e => {
+  state.obl = +e.target.value; renderActive();
+});
+document.getElementById('sl-ecc').addEventListener('input', e => {
+  state.ecc = +e.target.value; renderActive();
+});
+document.getElementById('sl-diff').addEventListener('input', e => {
+  state.diff = +e.target.value; renderActive();
+});
+
+// ───────────────────────────────────────────────────────────────────
+//  INIT
+// ───────────────────────────────────────────────────────────────────
+renderActive();
+</script>
+</body>
+</html>

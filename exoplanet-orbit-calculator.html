@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital & Planetary Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Design Tokens ── */
+:root, [data-theme="light"] {
+  --color-bg:             #f7f6f2;
+  --color-surface:        #f9f8f5;
+  --color-surface-2:      #fbfbf9;
+  --color-surface-offset: #f0ede9;
+  --color-divider:        #dcd9d5;
+  --color-border:         #d4d1ca;
+  --color-text:           #28251d;
+  --color-text-muted:     #6b6a65;
+  --color-text-faint:     #aaa9a4;
+  --color-text-inverse:   #f9f8f4;
+  --color-primary:        #01696f;
+  --color-primary-hover:  #0c4e54;
+  --color-primary-active: #0f3638;
+  --color-primary-highlight: #cedcd8;
+  --color-success:        #437a22;
+  --color-success-highlight: #d4dfcc;
+  --color-error:          #a12c7b;
+  --color-error-highlight: #e0ced7;
+  --color-warning:        #964219;
+  --color-warning-highlight: #ddcfc6;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px oklch(0.2 0.01 80 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0.2 0.01 80 / 0.08);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.01 80 / 0.12);
+  --transition: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --font-body: 'DM Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: 'DM Mono', 'Courier New', monospace;
+  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
+  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
+  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);
+  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);
+  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+  --space-4: 1rem;    --space-5: 1.25rem; --space-6: 1.5rem;
+  --space-8: 2rem;    --space-10: 2.5rem; --space-12: 3rem;
+  --space-16: 4rem;
+  --content-default: 960px;
+}
+
+[data-theme="dark"] {
+  --color-bg:             #12110f;
+  --color-surface:        #181715;
+  --color-surface-2:      #1e1d1b;
+  --color-surface-offset: #1a1918;
+  --color-divider:        #252422;
+  --color-border:         #333230;
+  --color-text:           #cdccca;
+  --color-text-muted:     #797876;
+  --color-text-faint:     #4f4e4c;
+  --color-text-inverse:   #2b2a28;
+  --color-primary:        #4f98a3;
+  --color-primary-hover:  #227f8b;
+  --color-primary-active: #1a626b;
+  --color-primary-highlight: #1f3235;
+  --color-success:        #6daa45;
+  --color-success-highlight: #1e2e17;
+  --color-error:          #d163a7;
+  --color-error-highlight: #2d1b29;
+  --color-warning:        #bb653b;
+  --color-warning-highlight: #2e1e14;
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.45);
+}
+
+/* ── Base Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+body {
+  min-height: 100dvh;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.6;
+}
+input, button, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+
+/* ── Layout ── */
+.app-wrapper {
+  max-width: var(--content-default);
+  margin-inline: auto;
+  padding: var(--space-8) var(--space-6);
+}
+
+/* ── Header ── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-10);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-divider);
+}
+.logo-group { display: flex; align-items: center; gap: var(--space-3); }
+.logo-svg { flex-shrink: 0; }
+.app-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  line-height: 1.15;
+}
+.app-subtitle {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Theme Toggle ── */
+.theme-toggle {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  background: var(--color-surface-offset);
+  color: var(--color-text);
+  border-color: var(--color-text-faint);
+}
+
+/* ── Calculator Grid ── */
+.calc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+}
+@media (max-width: 700px) {
+  .calc-grid { grid-template-columns: 1fr; }
+  .app-wrapper { padding: var(--space-5) var(--space-4); }
+}
+
+/* ── Card ── */
+.calc-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  transition: box-shadow var(--transition);
+}
+.calc-card:hover { box-shadow: var(--shadow-md); }
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.card-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+.card-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+  line-height: 1.5;
+}
+
+/* ── Solve-for selector ── */
+.solve-for-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.field-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.btn-group {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.btn-option {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+.btn-option:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-highlight);
+}
+.btn-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
+}
+
+/* ── Form Fields ── */
+.fields-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.field-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.field-row { display: flex; align-items: center; gap: var(--space-2); }
+.field-input {
+  flex: 1;
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+  -moz-appearance: textfield;
+}
+.field-input::-webkit-outer-spin-button,
+.field-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.field-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 20%, transparent);
+}
+.field-input:disabled {
+  background: var(--color-surface-offset);
+  color: var(--color-text-faint);
+  border-color: var(--color-divider);
+  cursor: not-allowed;
+}
+.field-unit {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: right;
+  font-style: italic;
+}
+
+/* ── Calculate Button ── */
+.btn-calculate {
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  transition: background var(--transition), box-shadow var(--transition), transform var(--transition);
+  border: none;
+}
+.btn-calculate:hover {
+  background: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+}
+.btn-calculate:active {
+  background: var(--color-primary-active);
+  transform: translateY(1px);
+}
+
+/* ── Result Box ── */
+.result-box {
+  background: var(--color-success-highlight);
+  border: 1.5px solid var(--color-success);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: fadeInUp 0.22s cubic-bezier(0.16,1,0.3,1);
+}
+.result-box.show { display: flex; }
+.result-box.error {
+  background: var(--color-error-highlight);
+  border-color: var(--color-error);
+}
+.result-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-success);
+}
+.result-box.error .result-label { color: var(--color-error); }
+.result-value {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+.result-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* ── Formula Reference ── */
+.formula-ref {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+}
+.formula-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-faint);
+  margin-bottom: var(--space-2);
+}
+.formula-text {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.8;
+}
+.formula-text em {
+  font-style: italic;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: 0 calc(-1 * var(--space-6));
+}
+
+/* ── Animations ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Focus visible ── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Selection ── */
+::selection {
+  background: color-mix(in oklch, var(--color-primary) 25%, transparent);
+  color: var(--color-text);
+}
+
+/* ── Responsive tweaks ── */
+@media (max-width: 480px) {
+  .field-unit { min-width: 55px; font-size: 0.7rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-wrapper">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-group">
+      <!-- SVG Logo: Orbital arc + planet dot -->
+      <svg class="logo-svg" aria-label="Orbital Calculator logo" width="40" height="40" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="18" stroke="var(--color-primary)" stroke-width="1.5" opacity="0.3"/>
+        <ellipse cx="20" cy="20" rx="18" ry="7" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" transform="rotate(-30 20 20)"/>
+        <circle cx="20" cy="20" r="4" fill="var(--color-primary)"/>
+        <circle cx="32" cy="13" r="2.5" fill="var(--color-primary)" opacity="0.7"/>
+      </svg>
+      <div>
+        <div class="app-title">Orbital &amp; Planetary Calculator</div>
+        <div class="app-subtitle">Kepler's Third Law · Planetary Properties</div>
+      </div>
+    </div>
+    <button class="theme-toggle" data-theme-toggle aria-label="Switch to light mode">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Two calculators side by side -->
+  <div class="calc-grid">
+
+    <!-- ── CALCULATOR 1: Kepler's Third Law ── -->
+    <div class="calc-card" id="kepler-card">
+      <div class="card-header">
+        <div class="card-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2a10 10 0 1 0 10 10"/>
+            <path d="M22 2L12 12"/>
+            <circle cx="22" cy="2" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-title">Kepler's Third Law</div>
+          <div class="card-desc">Relates orbital period, semimajor axis, and stellar mass for any two-body system.</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Solve-for selector -->
+      <div class="solve-for-group">
+        <div class="field-label">Solve for</div>
+        <div class="btn-group">
+          <button class="btn-option active" data-target="period" onclick="keplerSetSolve('period')">Period <em>P</em></button>
+          <button class="btn-option" data-target="axis" onclick="keplerSetSolve('axis')">Semimajor Axis <em>a</em></button>
+          <button class="btn-option" data-target="mass" onclick="keplerSetSolve('mass')">Stellar Mass <em>M</em></button>
+        </div>
+      </div>
+
+      <!-- Input fields -->
+      <div class="fields-stack">
+        <div class="field-group">
+          <div class="field-label">Semimajor Axis <em>a</em></div>
+          <div class="field-row">
+            <input class="field-input" type="number" id="k-axis" placeholder="e.g. 1.0" min="0" step="any">
+            <span class="field-unit">AU</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Orbital Period <em>P</em></div>
+          <div class="field-row">
+            <input class="field-input" type="number" id="k-period" placeholder="e.g. 1.0" min="0" step="any">
+            <span class="field-unit">years</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Stellar Mass <em>M</em></div>
+          <div class="field-row">
+            <input class="field-input" type="number" id="k-mass" placeholder="e.g. 1.0" min="0" step="any">
+            <span class="field-unit">M<sub>☉</sub></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calculate button -->
+      <button class="btn-calculate" onclick="keplerCalculate()">Calculate</button>
+
+      <!-- Result -->
+      <div class="result-box" id="k-result">
+        <div class="result-label" id="k-result-label">Result</div>
+        <div class="result-value" id="k-result-value">—</div>
+        <div class="result-note" id="k-result-note"></div>
+      </div>
+
+      <!-- Formula reference -->
+      <div class="formula-ref">
+        <div class="formula-title">Formula</div>
+        <div class="formula-text">
+          <em>P</em>² = <em>a</em>³ / <em>M</em><br>
+          <em>P</em> in years · <em>a</em> in AU · <em>M</em> in M<sub>☉</sub>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CALCULATOR 2: Planetary Properties ── -->
+    <div class="calc-card" id="planet-card">
+      <div class="card-header">
+        <div class="card-icon" style="background: color-mix(in oklch, var(--color-warning) 18%, var(--color-bg)); color: var(--color-warning);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="12" r="9"/>
+            <ellipse cx="12" cy="12" rx="12" ry="4" stroke="currentColor" stroke-width="1.5" opacity="0.7"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-title">Planetary Properties</div>
+          <div class="card-desc">Derive radius and surface gravity from planetary mass and mean density.</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Inputs -->
+      <div class="fields-stack">
+        <div class="field-group">
+          <div class="field-label">Planetary Mass <em>M<sub>p</sub></em></div>
+          <div class="field-row">
+            <input class="field-input" type="number" id="p-mass" placeholder="e.g. 1.0" min="0" step="any">
+            <span class="field-unit">M<sub>⊕</sub></span>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Mean Density <em>ρ</em></div>
+          <div class="field-row">
+            <input class="field-input" type="number" id="p-density" placeholder="e.g. 5.51" min="0" step="any">
+            <span class="field-unit">g/cm³</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reference density hints -->
+      <div style="display:flex; flex-wrap:wrap; gap: var(--space-2);">
+        <button class="btn-option" onclick="setDensity(5.51)" title="Earth-like rocky">🌍 Earth (5.51)</button>
+        <button class="btn-option" onclick="setDensity(3.93)" title="Mars-like">🔴 Mars (3.93)</button>
+        <button class="btn-option" onclick="setDensity(1.33)" title="Jupiter-like gas giant">🟠 Jupiter (1.33)</button>
+        <button class="btn-option" onclick="setDensity(0.69)" title="Saturn-like">🪐 Saturn (0.69)</button>
+        <button class="btn-option" onclick="setDensity(1.27)" title="Neptune-like ice giant">🔵 Neptune (1.64)</button>
+      </div>
+
+      <!-- Calculate button -->
+      <button class="btn-calculate" style="background: var(--color-warning);" 
+              onmouseover="this.style.background='var(--color-warning-hover)'"
+              onmouseout="this.style.background='var(--color-warning)'"
+              onclick="planetCalculate()">Calculate</button>
+
+      <!-- Result -->
+      <div class="result-box" id="p-result" style="--color-success: var(--color-warning); --color-success-highlight: var(--color-warning-highlight);">
+        <div class="result-label" id="p-result-label" style="color: var(--color-warning);">Result</div>
+        <div class="result-value" id="p-result-value">—</div>
+        <div class="result-note" id="p-result-note"></div>
+      </div>
+
+      <!-- Formula reference -->
+      <div class="formula-ref">
+        <div class="formula-title">Formulas</div>
+        <div class="formula-text">
+          <em>R</em> = (3M / 4πρ)^(1/3) → in R<sub>⊕</sub><br>
+          <em>g</em> = GM / R² → in units of g<sub>⊕</sub><br>
+          Uses M<sub>⊕</sub> = 5.972×10²⁴ kg, R<sub>⊕</sub> = 6.371×10⁶ m
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end calc-grid -->
+</div><!-- end app-wrapper -->
+
+<script>
+/* ── Theme Toggle ── */
+(function(){
+  const toggle = document.querySelector('[data-theme-toggle]');
+  const root = document.documentElement;
+  let theme = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+  root.setAttribute('data-theme', theme);
+  function updateIcon() {
+    if (!toggle) return;
+    toggle.setAttribute('aria-label', 'Switch to ' + (theme === 'dark' ? 'light' : 'dark') + ' mode');
+    toggle.innerHTML = theme === 'dark'
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  }
+  updateIcon();
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', theme);
+      updateIcon();
+    });
+  }
+})();
+
+/* ── Kepler's Third Law ── */
+let keplerSolve = 'period';
+
+function keplerSetSolve(target) {
+  keplerSolve = target;
+  document.querySelectorAll('#kepler-card .btn-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === target);
+  });
+  // Enable/disable fields
+  const axisField   = document.getElementById('k-axis');
+  const periodField = document.getElementById('k-period');
+  const massField   = document.getElementById('k-mass');
+  axisField.disabled   = (target === 'axis');
+  periodField.disabled = (target === 'period');
+  massField.disabled   = (target === 'mass');
+  if (axisField.disabled)   { axisField.value = ''; axisField.placeholder = 'Calculated'; }
+  else                      { axisField.placeholder = 'e.g. 1.0'; }
+  if (periodField.disabled) { periodField.value = ''; periodField.placeholder = 'Calculated'; }
+  else                      { periodField.placeholder = 'e.g. 1.0'; }
+  if (massField.disabled)   { massField.value = ''; massField.placeholder = 'Calculated'; }
+  else                      { massField.placeholder = 'e.g. 1.0'; }
+  // Hide previous result
+  document.getElementById('k-result').classList.remove('show', 'error');
+}
+
+// Initialize
+keplerSetSolve('period');
+
+function showResult(boxId, labelId, valueId, noteId, isError, label, value, note) {
+  const box = document.getElementById(boxId);
+  box.classList.remove('show', 'error');
+  void box.offsetWidth; // reflow for animation
+  if (isError) {
+    box.classList.add('show', 'error');
+    document.getElementById(labelId).textContent = 'Error';
+    document.getElementById(valueId).textContent = value;
+    document.getElementById(noteId).textContent = note || '';
+  } else {
+    box.classList.add('show');
+    document.getElementById(labelId).textContent = label;
+    document.getElementById(valueId).textContent = value;
+    document.getElementById(noteId).textContent = note || '';
+  }
+}
+
+function formatNum(n) {
+  if (Math.abs(n) < 1e-4 || Math.abs(n) >= 1e6) {
+    return n.toExponential(4);
+  }
+  // Significant figures approach: show 6 sig figs
+  let s = parseFloat(n.toPrecision(6)).toString();
+  return s;
+}
+
+function keplerCalculate() {
+  const axisVal   = parseFloat(document.getElementById('k-axis').value);
+  const periodVal = parseFloat(document.getElementById('k-period').value);
+  const massVal   = parseFloat(document.getElementById('k-mass').value);
+
+  // Kepler's Third Law (in solar units): P² = a³ / M
+  // → P = sqrt(a³ / M)
+  // → a = (M × P²)^(1/3)
+  // → M = a³ / P²
+
+  try {
+    if (keplerSolve === 'period') {
+      if (isNaN(axisVal) || isNaN(massVal)) throw new Error('Enter values for both Semimajor Axis and Stellar Mass.');
+      if (axisVal <= 0) throw new Error('Semimajor axis must be positive.');
+      if (massVal <= 0) throw new Error('Stellar mass must be positive.');
+      const P = Math.sqrt(Math.pow(axisVal, 3) / massVal);
+      showResult('k-result','k-result-label','k-result-value','k-result-note', false,
+        'Orbital Period  P',
+        formatNum(P) + '  years',
+        `For a = ${axisVal} AU orbiting a ${massVal} M☉ star.`
+      );
+    } else if (keplerSolve === 'axis') {
+      if (isNaN(periodVal) || isNaN(massVal)) throw new Error('Enter values for both Orbital Period and Stellar Mass.');
+      if (periodVal <= 0) throw new Error('Orbital period must be positive.');
+      if (massVal <= 0) throw new Error('Stellar mass must be positive.');
+      const a = Math.pow(massVal * Math.pow(periodVal, 2), 1/3);
+      showResult('k-result','k-result-label','k-result-value','k-result-note', false,
+        'Semimajor Axis  a',
+        formatNum(a) + '  AU',
+        `For P = ${periodVal} yr around a ${massVal} M☉ star.`
+      );
+    } else { // mass
+      if (isNaN(axisVal) || isNaN(periodVal)) throw new Error('Enter values for both Semimajor Axis and Orbital Period.');
+      if (axisVal <= 0) throw new Error('Semimajor axis must be positive.');
+      if (periodVal <= 0) throw new Error('Orbital period must be positive.');
+      const M = Math.pow(axisVal, 3) / Math.pow(periodVal, 2);
+      showResult('k-result','k-result-label','k-result-value','k-result-note', false,
+        'Stellar Mass  M',
+        formatNum(M) + '  M☉',
+        `For a = ${axisVal} AU with P = ${periodVal} yr.`
+      );
+    }
+  } catch(e) {
+    showResult('k-result','k-result-label','k-result-value','k-result-note', true,
+      '', e.message, '');
+  }
+}
+
+/* ── Planetary Properties ── */
+// Constants
+const M_EARTH  = 5.972e24;   // kg
+const R_EARTH  = 6.371e6;    // m
+const G        = 6.674e-11;  // m³ kg⁻¹ s⁻²
+const g_EARTH  = 9.807;      // m/s²
+
+function setDensity(val) {
+  document.getElementById('p-density').value = val;
+}
+
+function planetCalculate() {
+  const massEarths  = parseFloat(document.getElementById('p-mass').value);
+  const densGcm3    = parseFloat(document.getElementById('p-density').value);
+
+  try {
+    if (isNaN(massEarths) || isNaN(densGcm3)) throw new Error('Enter both planetary mass and mean density.');
+    if (massEarths <= 0) throw new Error('Planetary mass must be positive.');
+    if (densGcm3 <= 0) throw new Error('Mean density must be positive.');
+
+    // Convert density from g/cm³ to kg/m³
+    const rho_kgm3 = densGcm3 * 1000;          // 1 g/cm³ = 1000 kg/m³
+
+    // Mass in kg
+    const M_kg = massEarths * M_EARTH;
+
+    // R = (3M / 4πρ)^(1/3)  in meters
+    const R_m = Math.pow((3 * M_kg) / (4 * Math.PI * rho_kgm3), 1/3);
+    const R_earth = R_m / R_EARTH;
+
+    // g = GM / R²
+    const g_surf = (G * M_kg) / (R_m * R_m);
+    const g_rel  = g_surf / g_EARTH;
+
+    showResult('p-result','p-result-label','p-result-value','p-result-note', false,
+      'Planetary Radius & Surface Gravity',
+      `R = ${formatNum(R_earth)} R⊕    |    g = ${formatNum(g_rel)} g⊕`,
+      `Mass: ${massEarths} M⊕  ·  Density: ${densGcm3} g/cm³  →  R = ${formatNum(R_m/1e6)} × 10⁶ m,  g = ${formatNum(g_surf)} m/s²`
+    );
+  } catch(e) {
+    showResult('p-result','p-result-label','p-result-value','p-result-note', true,
+      '', e.message, '');
+  }
+}
+
+/* ── Allow Enter key to trigger calculate ── */
+document.querySelectorAll('.field-input').forEach(input => {
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const card = input.closest('.calc-card');
+      card.querySelector('.btn-calculate').click();
+    }
+  });
+});
+</script>
+</body>
+</html>
