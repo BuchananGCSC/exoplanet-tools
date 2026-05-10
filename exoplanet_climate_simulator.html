@@ -215,6 +215,23 @@
       <div class="section-header">⭐ Star</div>
       <div class="slider-group">
         <div class="slider-row">
+          <div class="slider-label">Quick pick from handout star list</div>
+          <select id="sel-star">
+            <option value="">— enter mass manually —</option>
+            <option value="0.08">TRAPPIST-1 (M8, 0.08 M☉)</option>
+            <option value="0.12">Proxima Centauri (M5.5, 0.12 M☉)</option>
+            <option value="0.16">Barnard's Star (M4, 0.16 M☉)</option>
+            <option value="0.33">Gliese 667 C (M1.5, 0.33 M☉)</option>
+            <option value="0.45">Gliese 832 (M1, 0.45 M☉)</option>
+            <option value="0.70">61 Cygni A (K5V, 0.70 M☉)</option>
+            <option value="0.73">HD 40307 (K2.5V, 0.73 M☉)</option>
+            <option value="0.82">Epsilon Eridani (K2V, 0.82 M☉)</option>
+            <option value="0.91">55 Cancri (G8-K7V, 0.91 M☉)</option>
+            <option value="1.04">Kepler-452 (G2V, 1.04 M☉)</option>
+            <option value="1.28">Upsilon Andromedae (F8V, 1.28 M☉)</option>
+          </select>
+        </div>
+                <div class="slider-row">
           <div class="slider-label">Stellar Mass (M☉) <span id="lbl-mass">1.00</span></div>
           <input type="range" id="sl-mass" min="0.08" max="2.0" step="0.01" value="1.0">
         </div>
@@ -222,6 +239,7 @@
       <div class="badge-row" style="margin-top:10px">
         <span class="badge badge-blue" id="badge-type">G-type</span>
         <span class="badge badge-purple" id="badge-lum">1.000 L☉</span>
+      <span class="badge badge-yellow" id="badge-life">~10 Gyr</span>
       </div>
     </div>
 
@@ -425,6 +443,15 @@ function stellarLuminosity(mass) {
   if (mass < 2.0)  return Math.pow(mass, 4.0);           // FGK and upper M
   return 1.4 * Math.pow(mass, 3.5);                      // A-type and above
 }
+// Stellar lifespan estimate anchored at Sun = 10 Gyr
+function stellarLifespan(mass) {
+  const gyr = 10.0 * Math.pow(mass, -2.5);
+  if (gyr > 200) return '>200 Gyr';
+  if (gyr > 100) return '~' + Math.round(gyr/50)*50 + ' Gyr';
+  if (gyr > 20)  return '~' + Math.round(gyr/10)*10 + ' Gyr';
+  return '~' + gyr.toFixed(1) + ' Gyr';
+}
+
 
 function habitableZone(mass) {
   const lum = stellarLuminosity(mass);
@@ -600,6 +627,7 @@ function updateSidebar() {
 
   document.getElementById('badge-type').textContent = d.spType;
   document.getElementById('badge-lum').textContent = d.lum.toFixed(3)+' L☉';
+  document.getElementById('badge-life').textContent = stellarLifespan(+state.mass);
 
   const hzBadge = document.getElementById('badge-hz');
   hzBadge.textContent = d.inHz ? 'In HZ ✓' : 'Outside HZ ✗';
@@ -1219,8 +1247,18 @@ function renderActive() {
 //  SLIDER WIRING
 // ───────────────────────────────────────────────────────────────────
 document.getElementById('sl-mass').addEventListener('input', e => {
-  state.mass = +e.target.value; renderActive();
+  state.mass = +e.target.value;
+  document.getElementById('sel-star').value = ''; // clear dropdown when slider moved
+  renderActive();
 });
+document.getElementById('sel-star').addEventListener('change', e => {
+  if (e.target.value) {
+    state.mass = +e.target.value;
+    document.getElementById('sl-mass').value = state.mass;
+    renderActive();
+  }
+});
+
 document.getElementById('sl-dist').addEventListener('input', e => {
   state.dist = +e.target.value; renderActive();
 });
