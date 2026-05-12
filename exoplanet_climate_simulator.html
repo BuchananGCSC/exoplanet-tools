@@ -681,9 +681,8 @@ function run0dEBM(T0_K, CO2, S0, albedo_warm=0.30, nYears=300, dtYr=0.5) {
 }
 
 // ───────────────────────────────────────────────────────────────────
-//  SUMMER SOLSTICE INSOLATION  (Fix 1 — replaces annual-mean formula)
+//  DAILY-MEAN INSOLATION  (for a single day given declination δ)
 // ───────────────────────────────────────────────────────────────────
-// At northern summer solstice the solar declination = +obliquity.
 // For a given latitude φ and declination δ, the daily-mean insolation is:
 //   Q = (S₀/π) · [ h₀·sin φ·sin δ  +  cos φ·cos δ·sin h₀ ]
 // where h₀ = sunrise/sunset hour angle = arccos(−tan φ · tan δ).
@@ -700,6 +699,24 @@ function solsticeInsolation(S0, obliquityDeg, lat_deg) {
   return (S0 / Math.PI) *
     (h0 * Math.sin(phi) * Math.sin(delta) +
      Math.cos(phi) * Math.cos(delta) * Math.sin(h0));
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  SEASON-MEAN INSOLATION  (6-month NH summer average: Apr–Sep)
+// ───────────────────────────────────────────────────────────────────
+// Averages the daily-mean insolation over the 6 NH summer months (months 3–8:
+// April through September). This avoids the solstice-peak overheating at high
+// obliquity while preserving the NH/SH asymmetry that makes the summer profile
+// physically meaningful. The winter profile uses the complementary 6 months
+// (Oct–Mar, months 9–2) by symmetry (negative declinations).
+function seasonMeanInsolation(S0, obliquityDeg, lat_deg, summerMonths) {
+  // summerMonths: array of month indices (0=Jan…11=Dec)
+  let total = 0;
+  for (const m of summerMonths) {
+    const decl = monthlyDeclination(obliquityDeg, m);
+    total += solsticeInsolation(S0, decl, lat_deg);
+  }
+  return total / summerMonths.length;
 }
 
 // Summer-solstice latitude profile with local EBM + ice–albedo feedback
@@ -720,11 +737,12 @@ function tridiagSolve(a, b, c, d) {
 
 // Single-month implicit diffusive EBM.
 // decl = solar declination in degrees (+ve = NH summer).
-function monthlyDiffEBM(S0, CO2, decl, planet, D_rel, lats) {
+// Q_override (optional array): if provided, used directly instead of computing from decl.
+function monthlyDiffEBM(S0, CO2, decl, planet, D_rel, lats, Q_override) {
   const alb = PLANET_ALBEDO[planet];
   const dF  = a_ghg * Math.log(CO2 / CO2_ref);
   const N = lats.length, dp = 2 * Math.PI / 180, D_phys = D_rel * 2.86;
-  const Q = lats.map(l => solsticeInsolation(S0, decl, l));
+  const Q = Q_override || lats.map(l => solsticeInsolation(S0, decl, l));
   let iceFrac = new Array(N).fill(0);
   for (let outer = 0; outer < 6; outer++) {
     const ae  = iceFrac.map(f => f * alpha_ice + (1 - f) * alb);
@@ -745,34 +763,18 @@ function monthlyDiffEBM(S0, CO2, decl, planet, D_rel, lats) {
 }
 
 // Returns [lats, T_NHsummer, T_NHwinter].
-// Smooth profiles — no jumps from ice-albedo discontinuity.
+// Uses 6-month season-averaged insolation (Apr–Sep for NH summer; Oct–Mar for NH winter)
+// to avoid the solstice-peak overheating at high obliquity while preserving the
+// correct NH/SH asymmetry. The resulting Q array is passed to the EBM solver.
 function latProfileRotating(S0, CO2, obliquityDeg, planetType='earth', D_rel=0.35) {
   const lats = [];
   for (let l = -90; l <= 90; l += 2) lats.push(l);
-
-  // Compute all 12 monthly profiles and derive annual mean.
-  // Using T_annual_mean + damped seasonal anomaly instead of a pure solstice
-  // snapshot corrects the unrealistically hot N pole and cold SH mid-latitudes
-  // that arise when the instantaneous EBM is run with peak solstice insolation
-  // (which has no thermal inertia). Damping factor f=1/(1+(|lat|/45)^2) gives
-  // full seasonal response at the equator and ~20% at the poles.
-  const T_all = Array.from({length: 12}, (_, m) =>
-    monthlyDiffEBM(S0, CO2, monthlyDeclination(obliquityDeg, m), planetType, D_rel, lats)
-  );
-  const T_mean = lats.map((_, i) => T_all.reduce((s, Tm) => s + Tm[i], 0) / 12);
-
-  const T_jun = T_all[5];   // June  — NH summer solstice
-  const T_dec = T_all[11];  // December — NH winter solstice
-
-  const T_summer = lats.map((lat, i) => {
-    const f = 1 / (1 + Math.pow(Math.abs(lat) / 45, 2));
-    return T_mean[i] + f * (T_jun[i] - T_mean[i]);
-  });
-  const T_winter = lats.map((lat, i) => {
-    const f = 1 / (1 + Math.pow(Math.abs(lat) / 45, 2));
-    return T_mean[i] + f * (T_dec[i] - T_mean[i]);
-  });
-
+  const NH_summer_months = [3, 4, 5, 6, 7, 8];   // Apr–Sep
+  const NH_winter_months = [9, 10, 11, 0, 1, 2];  // Oct–Mar
+  const Q_summer = lats.map(l => seasonMeanInsolation(S0, obliquityDeg, l, NH_summer_months));
+  const Q_winter = lats.map(l => seasonMeanInsolation(S0, obliquityDeg, l, NH_winter_months));
+  const T_summer = monthlyDiffEBM(S0, CO2, null, planetType, D_rel, lats, Q_summer);
+  const T_winter = monthlyDiffEBM(S0, CO2, null, planetType, D_rel, lats, Q_winter);
   return [lats, T_summer, T_winter];
 }
 function monthlyDeclination(obliquityDeg, monthIndex) {
@@ -821,10 +823,10 @@ const LAYOUT_BASE = {
   paper_bgcolor: '#0d1117',
   plot_bgcolor:  '#0d1117',
   font:  { color: '#e6edf3', family: 'system-ui, sans-serif', size: 12 },
-  xaxis: { gridcolor: 'rgba(255,255,255,0.06)', gridwidth: 1, zerolinecolor: 'rgba(255,255,255,0.10)',
-           zerolinewidth: 1, linecolor: 'rgba(255,255,255,0.12)', tickcolor: '#8b949e' },
-  yaxis: { gridcolor: 'rgba(255,255,255,0.06)', gridwidth: 1, zerolinecolor: 'rgba(255,255,255,0.10)',
-           zerolinewidth: 1, linecolor: 'rgba(255,255,255,0.12)', tickcolor: '#8b949e' },
+  xaxis: { gridcolor: 'rgba(255,255,255,0.07)', zerolinecolor: 'rgba(255,255,255,0.15)',
+           linecolor: 'rgba(255,255,255,0.15)', tickcolor: '#8b949e', zerolinewidth: 1 },
+  yaxis: { gridcolor: 'rgba(255,255,255,0.07)', zerolinecolor: 'rgba(255,255,255,0.15)',
+           linecolor: 'rgba(255,255,255,0.15)', tickcolor: '#8b949e', zerolinewidth: 1 },
   legend: { bgcolor: 'rgba(13,17,23,0.9)', bordercolor: 'rgba(255,255,255,0.1)', borderwidth: 1 },
   margin: { t: 40, r: 20, b: 50, l: 60 },
 };
@@ -1117,8 +1119,8 @@ function plot5A() {
   const alb = PLANET_ALBEDO[planet];
   const delta_F = a_ghg * Math.log(co2 / CO2_ref);
 
-  // ── NH Summer-solstice latitude profile ──────────────────────────────────
-  // Declination = +obliquity → N-pole is summer pole (warm), S-pole is winter pole (cold)
+  // ── NH Season-averaged latitude profile (Apr–Sep summer, Oct–Mar winter) ──────
+  // 6-month averages reduce solstice-peak overheating at high obliquity
   const [lats, T_summer, T_winter] = latProfileRotating(S0, co2, obl, planet, diff);
   const [, T_noObl_s] = latProfileRotating(S0, co2, 0, planet, diff);
 
@@ -1132,7 +1134,7 @@ function plot5A() {
 
   const weights = lats.map(lat => Math.cos(lat * Math.PI / 180));
   const wSum    = weights.reduce((a,b)=>a+b,0);
-  // Annual mean is the average of summer and winter
+  // Approximate annual mean: average of NH-summer and NH-winter season profiles
   const Tann    = T_summer.map((t,i) => (t + T_winter[i]) / 2);
   const Tgm     = Tann.reduce((acc,t,i) => acc + t*weights[i], 0) / wSum;
   const TeqS    = T_summer[Math.round(T_summer.length/2)];
@@ -1141,10 +1143,10 @@ function plot5A() {
 
   const traces5a = [
     { x:lats, y:T_summer, mode:'lines',
-      name:`NH Summer (${obl.toFixed(1)}° obliquity)`,
+      name:`NH Summer Season / Apr–Sep (${obl.toFixed(1)}° obliquity)`,
       line:{color:'#f85149', width:2.5} },
     { x:lats, y:T_winter, mode:'lines',
-      name:'NH Winter',
+      name:'NH Winter Season / Oct–Mar',
       line:{color:'#58a6ff', width:2.5, dash:'dash'} },
     { x:lats, y:T_noObl_s, mode:'lines', name:'Zero obliquity (reference)',
       line:{color:'#8b949e', width:1.5, dash:'dot'} },
@@ -1155,7 +1157,7 @@ function plot5A() {
   ];
 
   Plotly.react('plot-5a', traces5a, layout({
-    title:{ text:`NH Summer Solstice Temperature vs Latitude`, font:{size:14} },
+    title:{ text:`NH Summer Season Temperature vs Latitude (6-mo avg)`, font:{size:14} },
     xaxis:{ title:'Latitude (°)',
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'] },
@@ -1176,12 +1178,12 @@ function plot5A() {
   }
 
     // Transpose hovZ: rows=months, cols=lats → need rows=lats, cols=months for x=month, y=lat
-  const hovZT = lats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
+  const hovZT = hovLats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
 
   Plotly.react('plot-5a-hovm', [{
     z: hovZT,
     x: MONTHS,
-    y: lats,
+    y: hovLats,
     type: 'heatmap',
     colorscale: 'RdBu',
     reversescale: false,
@@ -1208,9 +1210,9 @@ function plot5A() {
   // ── Record block ───────────────────────────────────────────────────────────
   const rec = document.getElementById('rec5a-vals');
   rec.innerHTML = kv([
-    ['NH Summer Pole temperature', TpoleN.toFixed(1)+' °C'],
-    ['Equatorial temperature (NH summer)', TeqS.toFixed(1)+' °C'],
-    ['NH Winter Pole temperature', TpoleS.toFixed(1)+' °C'],
+    ['NH Summer Pole temperature (season avg)', TpoleN.toFixed(1)+' °C'],
+    ['Equatorial temperature (NH summer season)', TeqS.toFixed(1)+' °C'],
+    ['NH Winter Pole temperature (season avg)', TpoleS.toFixed(1)+' °C'],
     ['Area-weighted annual mean T', Tgm.toFixed(1)+' °C'],
     ['Ice-line latitude (NH summer)', iceYour < -89 ? 'Fully frozen' : (Math.abs(iceYour).toFixed(0)+'°')],
     ['Habitable latitude range', iceYour < -89 ? 'None (snowball)' : Math.abs(iceYour).toFixed(0)+'°–90° each hemisphere'],
@@ -1326,10 +1328,10 @@ function plot6() {
 
   Plotly.react('plot-6b', [
     { x:xVals, y:Tvals, mode:'lines',
-      name: d.isLocked ? 'Day–Night Temperature' : 'NH Summer',
+      name: d.isLocked ? 'Day–Night Temperature' : 'NH Summer Season',
       line:{color:'#f85149', width:2.5} },
     ...(T_winter_plot ? [{ x:xVals, y:T_winter_plot, mode:'lines',
-      name:'NH Winter', line:{color:'#58a6ff', width:2.5, dash:'dash'} }] : []),
+      name:'NH Winter Season / Oct–Mar', line:{color:'#58a6ff', width:2.5, dash:'dash'} }] : []),
     { x:[xVals[0],xVals[xVals.length-1]], y:[-10,-10], mode:'lines', name:'Ice threshold (−10°C)',
       line:{color:'#1565C0',dash:'dot',width:1.5} },
     { x:[xVals[0],xVals[xVals.length-1]], y:[100,100], mode:'lines', name:'Boiling (100°C)',
@@ -1346,7 +1348,7 @@ function plot6() {
     ...(d.isLocked ? [{ x:[0,0], y:[-100,200], mode:'lines', name:'Terminator',
       line:{color:'#8b949e',dash:'dash',width:1} }] : []),
   ], layout({
-    title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'NH Summer Solstice Latitude Profile', font:{size:13} },
+    title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'NH Summer Season Latitude Profile (6-mo avg)', font:{size:13} },
     xaxis:{ title:xLabel, tickvals:xTickvals, ticktext:xTicktext },
     yaxis:{ title:'Temperature (°C)' },
     legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
@@ -1379,7 +1381,7 @@ function plot6() {
           Tvals[Tvals.length-1].toFixed(1)+' / '+T_equator.toFixed(1)+' / '+Tvals[0].toFixed(1)+' °C']
       : ['NH Summer Pole temperature', T_summerPole.toFixed(1)+' °C'],
     ...(d.isLocked ? [] : [
-      ['Equatorial temperature (NH summer)', T_equator.toFixed(1)+' °C'],
+      ['Equatorial temperature (NH summer season)', T_equator.toFixed(1)+' °C'],
       ['Winter Pole (SH) temperature', T_winterPole.toFixed(1)+' °C'],
     ]),
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
