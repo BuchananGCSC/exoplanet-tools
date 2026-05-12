@@ -288,7 +288,7 @@
     </div>
 
     <div>
-      <div class="section-header">🌬️ Heat Transport (5 & 6)</div>
+      <div class="section-header">🔒 Tidally Locked (5B)</div>
       <div class="slider-group">
         <div class="slider-row">
           <div class="slider-label">Diffusion D <span id="lbl-diff">0.20</span></div>
@@ -702,12 +702,8 @@ function solsticeInsolation(S0, obliquityDeg, lat_deg) {
      Math.cos(phi) * Math.cos(delta) * Math.sin(h0));
 }
 
-// ── Rotating planet latitude profile: annual-mean implicit diffusive EBM ──
-// Uses annual-mean insolation (capturing obliquity effect correctly) with
-// a proper tridiagonal implicit solve for the diffusion operator.
-// Equation: B·T - D·∇²T = Q_ann·(1-α_eff) + δF - A
-// Ice-albedo via seasonal ice fraction (outer iterations).
-// Energy-conserving: global mean T is independent of D.
+// Summer-solstice latitude profile with local EBM + ice–albedo feedback
+// Thomas algorithm for tridiagonal systems
 function tridiagSolve(a, b, c, d) {
   const n = d.length;
   const cp = new Array(n), dp = new Array(n), x = new Array(n);
@@ -722,111 +718,96 @@ function tridiagSolve(a, b, c, d) {
   return x;
 }
 
-function latProfileRotating(S0, CO2, obliquityDeg, planetType='earth', D_rel=0.2) {
-  const alb     = PLANET_ALBEDO[planetType];
-  const delta_F = a_ghg * Math.log(CO2 / CO2_ref);
-  const lats    = [];
-  for (let l = -90; l <= 90; l += 2) lats.push(l);
-  const N  = lats.length;
-  const dp = 2 * Math.PI / 180;  // grid spacing in radians
-  // Map D_rel [0.01..0.7] → D_phys W/m²/K
-  // D_rel=0.35 ≈ Earth-like pole–equator contrast
-  const D_phys = D_rel * 2.86;
-
-  // Annual-mean insolation at each latitude
-  const Q_ann = lats.map(lat => {
-    let sum = 0;
-    for (let m = 0; m < 12; m++)
-      sum += solsticeInsolation(S0, monthlyDeclination(obliquityDeg, m), lat);
-    return sum / 12;
-  });
-
-  // Iterate for ice-albedo feedback: estimate seasonal ice fraction
+// Single-month implicit diffusive EBM.
+// decl = solar declination in degrees (+ve = NH summer).
+function monthlyDiffEBM(S0, CO2, decl, planet, D_rel, lats) {
+  const alb = PLANET_ALBEDO[planet];
+  const dF  = a_ghg * Math.log(CO2 / CO2_ref);
+  const N = lats.length, dp = 2 * Math.PI / 180, D_phys = D_rel * 2.86;
+  const Q = lats.map(l => solsticeInsolation(S0, decl, l));
   let iceFrac = new Array(N).fill(0);
-
-  for (let outer = 0; outer < 8; outer++) {
-    const alpha_eff = iceFrac.map(f => f * alpha_ice + (1 - f) * alb);
-    const rhs = Q_ann.map((q, i) => q * (1 - alpha_eff[i]) + delta_F - A_OLR);
-
-    // Build tridiagonal coefficients for B·T - D·∇²T = rhs
-    const lo = new Array(N).fill(0);
-    const di = new Array(N).fill(0);
-    const up = new Array(N).fill(0);
+  for (let outer = 0; outer < 6; outer++) {
+    const ae  = iceFrac.map(f => f * alpha_ice + (1 - f) * alb);
+    const rhs = Q.map((q, i) => q * (1 - ae[i]) + dF - A_OLR);
+    const lo = new Array(N).fill(0), di = new Array(N).fill(0), up = new Array(N).fill(0);
     for (let i = 0; i < N; i++) {
       const cosp = Math.max(Math.cos(lats[i] * Math.PI / 180), 1e-4);
-      const cosN = i < N-1 ? Math.cos((lats[i] + 1) * Math.PI / 180) : 0;
-      const cosS = i > 0   ? Math.cos((lats[i] - 1) * Math.PI / 180) : 0;
+      const cosN = i < N-1 ? Math.cos((lats[i]+1) * Math.PI / 180) : 0;
+      const cosS = i > 0   ? Math.cos((lats[i]-1) * Math.PI / 180) : 0;
       const dN = D_phys * cosN / (cosp * dp * dp);
       const dS = D_phys * cosS / (cosp * dp * dp);
-      lo[i] = -dS;
-      up[i] = -dN;
-      di[i] = B_OLR + dN + dS;
+      lo[i] = -dS; up[i] = -dN; di[i] = B_OLR + dN + dS;
     }
     const T = tridiagSolve(lo, di, up, rhs);
-
-    // Update seasonal ice fraction from local monthly temperatures
-    iceFrac = lats.map((lat, i) => {
-      let frozen = 0;
-      for (let m = 0; m < 12; m++) {
-        const Qm = solsticeInsolation(S0, monthlyDeclination(obliquityDeg, m), lat);
-        const Tm = (Qm * (1 - alpha_eff[i]) + delta_F - A_OLR) / B_OLR;
-        if (Tm < -10) frozen++;
-      }
-      return frozen / 12;
-    });
-
-    if (outer === 7) return [lats, T];
+    iceFrac = T.map(t => t < -10 ? 1 : 0);
+    if (outer === 5) return T;
   }
 }
 
-// Seasonal (month-by-month) declination approximation
-// δ(m) = obliquity · sin(2π·m/12 + π/2)  gives solstice at m=3 (Jun ≈ index 5 in 0-based months)
+// Returns [lats, T_NHsummer, T_NHwinter].
+// Smooth profiles — no jumps from ice-albedo discontinuity.
+function latProfileRotating(S0, CO2, obliquityDeg, planetType='earth', D_rel=0.35) {
+  const lats = [];
+  for (let l = -90; l <= 90; l += 2) lats.push(l);
+
+  // Compute all 12 monthly profiles and derive annual mean.
+  // Using T_annual_mean + damped seasonal anomaly instead of a pure solstice
+  // snapshot corrects the unrealistically hot N pole and cold SH mid-latitudes
+  // that arise when the instantaneous EBM is run with peak solstice insolation
+  // (which has no thermal inertia). Damping factor f=1/(1+(|lat|/45)^2) gives
+  // full seasonal response at the equator and ~20% at the poles.
+  const T_all = Array.from({length: 12}, (_, m) =>
+    monthlyDiffEBM(S0, CO2, monthlyDeclination(obliquityDeg, m), planetType, D_rel, lats)
+  );
+  const T_mean = lats.map((_, i) => T_all.reduce((s, Tm) => s + Tm[i], 0) / 12);
+
+  const T_jun = T_all[5];   // June  — NH summer solstice
+  const T_dec = T_all[11];  // December — NH winter solstice
+
+  const T_summer = lats.map((lat, i) => {
+    const f = 1 / (1 + Math.pow(Math.abs(lat) / 45, 2));
+    return T_mean[i] + f * (T_jun[i] - T_mean[i]);
+  });
+  const T_winter = lats.map((lat, i) => {
+    const f = 1 / (1 + Math.pow(Math.abs(lat) / 45, 2));
+    return T_mean[i] + f * (T_dec[i] - T_mean[i]);
+  });
+
+  return [lats, T_summer, T_winter];
+}
 function monthlyDeclination(obliquityDeg, monthIndex) {
-  // monthIndex 0=Jan … 11=Dec; June solstice at monthIndex=5
-  return obliquityDeg * Math.sin(2 * Math.PI * (monthIndex / 12) + Math.PI / 2);
+  // monthIndex 0=Jan … 11=Dec; June solstice (NH summer) at monthIndex=5
+  const day = (monthIndex + 0.5) * 30.44;
+  return obliquityDeg * Math.sin(2 * Math.PI * (day - 80) / 365.25);
 }
 
 function tlProfile(S0, CO2, D_rel, planetType='earth') {
-  // Proper 1-D diffusive EBM in substellar-angle coordinates.
-  // Geometry: angle a ∈ [−90°, +90°], substellar point at a = +90°,
-  //           antistellar at a = −90°, terminator at a = 0°.
-  // Insolation: Q(a) = S0·sin(a) for a > 0 (day side), 0 for a ≤ 0.
-  //   → area-weighted global mean Q = S0/4 ✓ (energy-conserving).
-  // Spherical diffusion operator uses sinφ_s = cos(a) as the area weight,
-  //   where φ_s = 90° − a is the co-latitude from the substellar point.
-  // Solved implicitly via Thomas algorithm; ice-albedo iterated to convergence.
-  // Ice albedo only applied on the day side (where Q > 0).
+  // Implicit diffusive EBM in substellar-angle coordinates.
+  // angle a: -90=antistellar, 0=terminator, +90=substellar
+  // Q(a) = S0*sin(a) for a>0, 0 for a<=0  → global mean Q = S0/4 ✓
+  // Spherical diffusion uses sinφ_s = cos(a) as area weight.
+  // Ice albedo applied only on day side (Q>0).
   const alb = PLANET_ALBEDO[planetType];
   const dF  = a_ghg * Math.log(CO2 / CO2_ref);
   const angles = [];
   for (let a = -90; a <= 90; a += 2) angles.push(a);
   const N    = angles.length;
   const da   = 2 * Math.PI / 180;
-  const D_phys = D_rel * 2.86;   // same scaling as rotating model
-
+  const D_phys = D_rel * 2.86;
   const Q = angles.map(a => a > 0 ? S0 * Math.sin(a * Math.PI / 180) : 0);
-
   let iceFrac = new Array(N).fill(0);
   for (let outer = 0; outer < 8; outer++) {
-    // Ice albedo only matters where sunlight falls
     const alpha_eff = angles.map((a, i) =>
-      a <= 0 ? alb : iceFrac[i] * alpha_ice + (1 - iceFrac[i]) * alb
-    );
+      a <= 0 ? alb : iceFrac[i] * alpha_ice + (1 - iceFrac[i]) * alb);
     const rhs = Q.map((q, i) => q * (1 - alpha_eff[i]) + dF - A_OLR);
-
-    // Tridiagonal coefficients for B·T − D·(1/sinφ_s)·d/dφ_s[sinφ_s·dT/dφ_s] = rhs
-    const lo = new Array(N).fill(0);
-    const di = new Array(N).fill(0);
-    const up = new Array(N).fill(0);
+    const lo = new Array(N).fill(0), di = new Array(N).fill(0), up = new Array(N).fill(0);
     for (let i = 0; i < N; i++) {
       const sinPs  = Math.max(Math.cos(angles[i] * Math.PI / 180), 1e-4);
-      const sinPsN = i < N-1 ? Math.cos((angles[i] + 1) * Math.PI / 180) : 0;
-      const sinPsS = i > 0   ? Math.cos((angles[i] - 1) * Math.PI / 180) : 0;
+      const sinPsN = i < N-1 ? Math.cos((angles[i]+1) * Math.PI / 180) : 0;
+      const sinPsS = i > 0   ? Math.cos((angles[i]-1) * Math.PI / 180) : 0;
       const dN = D_phys * sinPsN / (sinPs * da * da);
       const dS = D_phys * sinPsS / (sinPs * da * da);
-      lo[i] = -dS;
-      up[i] = -dN;
-      di[i] = B_OLR + dN + dS;
+      lo[i] = -dS; up[i] = -dN; di[i] = B_OLR + dN + dS;
     }
     const T = tridiagSolve(lo, di, up, rhs);
     iceFrac = T.map(t => t < -10 ? 1 : 0);
@@ -834,17 +815,18 @@ function tlProfile(S0, CO2, D_rel, planetType='earth') {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────
-//  PLOTLY THEME
-// ───────────────────────────────────────────────────────────────────
+
 const LAYOUT_BASE = {
-  paper_bgcolor: '#161b22',
-  plot_bgcolor: '#0d1117',
-  font: { color: '#e6edf3', size: 12, family: 'Segoe UI, system-ui, sans-serif' },
+  template: 'none',
+  paper_bgcolor: '#0d1117',
+  plot_bgcolor:  '#0d1117',
+  font:  { color: '#e6edf3', family: 'system-ui, sans-serif', size: 12 },
+  xaxis: { gridcolor: 'rgba(255,255,255,0.06)', gridwidth: 1, zerolinecolor: 'rgba(255,255,255,0.10)',
+           zerolinewidth: 1, linecolor: 'rgba(255,255,255,0.12)', tickcolor: '#8b949e' },
+  yaxis: { gridcolor: 'rgba(255,255,255,0.06)', gridwidth: 1, zerolinecolor: 'rgba(255,255,255,0.10)',
+           zerolinewidth: 1, linecolor: 'rgba(255,255,255,0.12)', tickcolor: '#8b949e' },
+  legend: { bgcolor: 'rgba(13,17,23,0.9)', bordercolor: 'rgba(255,255,255,0.1)', borderwidth: 1 },
   margin: { t: 40, r: 20, b: 50, l: 60 },
-  xaxis: { gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#8b949e', zerolinecolor: '#30363d' },
-  yaxis: { gridcolor: '#21262d', linecolor: '#30363d', tickcolor: '#8b949e', zerolinecolor: '#30363d' },
-  legend: { bgcolor: 'rgba(22,27,34,0.8)', bordercolor: '#30363d', borderwidth: 1 },
 };
 
 function layout(extra={}) {
@@ -1133,10 +1115,12 @@ function plot5A() {
   const d = derive();
   const S0 = d.S0;
   const alb = PLANET_ALBEDO[planet];
+  const delta_F = a_ghg * Math.log(co2 / CO2_ref);
 
-  // ── Summer-solstice latitude profile ─────────────────────────────────────
-  const [lats, Tyour]  = latProfileRotating(S0, co2, obl, planet, diff);
-  const [, TnoObl]     = latProfileRotating(S0, co2, 0,   planet, diff);
+  // ── NH Summer-solstice latitude profile ──────────────────────────────────
+  // Declination = +obliquity → N-pole is summer pole (warm), S-pole is winter pole (cold)
+  const [lats, T_summer, T_winter] = latProfileRotating(S0, co2, obl, planet, diff);
+  const [, T_noObl_s] = latProfileRotating(S0, co2, 0, planet, diff);
 
   function iceLine(temps) {
     for (let i=0; i<lats.length/2; i++) {
@@ -1144,34 +1128,34 @@ function plot5A() {
     }
     return -90;
   }
-  const iceYour  = iceLine(Tyour);
+  const iceYour = iceLine(T_summer);
 
-  // Area-weighted global mean of solstice profile
-  const weights  = lats.map(lat => Math.cos(lat * Math.PI / 180));
-  const wSum     = weights.reduce((a,b)=>a+b,0);
-  const Tgm      = Tyour.reduce((acc,t,i)=>acc+t*weights[i],0) / wSum;
-  const Teq      = Tyour[Math.round(Tyour.length/2)];
-  const TpoleN   = Tyour[Tyour.length-1];
-  const TpoleS   = Tyour[0];
+  const weights = lats.map(lat => Math.cos(lat * Math.PI / 180));
+  const wSum    = weights.reduce((a,b)=>a+b,0);
+  // Annual mean is the average of summer and winter
+  const Tann    = T_summer.map((t,i) => (t + T_winter[i]) / 2);
+  const Tgm     = Tann.reduce((acc,t,i) => acc + t*weights[i], 0) / wSum;
+  const TeqS    = T_summer[Math.round(T_summer.length/2)];
+  const TpoleN  = T_summer[T_summer.length-1];   // NH summer pole (warm)
+  const TpoleS  = T_winter[T_winter.length-1];   // NH winter pole (cold) = T_winter N-pole
 
   const traces5a = [
-    { x:lats, y:Tyour, mode:'lines',
-      name:`Your planet (${obl.toFixed(1)}° obliquity, D=${diff.toFixed(2)})`,
-      line:{color:'#58a6ff', width:2.5} },
-    { x:lats, y:TnoObl, mode:'lines', name:'Zero obliquity (reference)',
-      line:{color:'#8b949e', width:1.5, dash:'dash'} },
+    { x:lats, y:T_summer, mode:'lines',
+      name:`NH Summer (${obl.toFixed(1)}° obliquity)`,
+      line:{color:'#f85149', width:2.5} },
+    { x:lats, y:T_winter, mode:'lines',
+      name:'NH Winter',
+      line:{color:'#58a6ff', width:2.5, dash:'dash'} },
+    { x:lats, y:T_noObl_s, mode:'lines', name:'Zero obliquity (reference)',
+      line:{color:'#8b949e', width:1.5, dash:'dot'} },
     { x:lats, y:lats.map(()=>-10), mode:'lines', name:'Ice threshold (−10°C)',
-      line:{color:'#1565C0', dash:'dot', width:1.5} },
+      line:{color:'#1565C0', dash:'dot', width:1} },
     { x:lats, y:lats.map(()=>100), mode:'lines', name:'Boiling (100°C)',
-      line:{color:'#f85149', dash:'dot', width:1.5} },
-    { x:[0], y:[Teq], mode:'markers', name:'Equator',
-      marker:{color:'#fbbf24', size:10} },
-    { x:[-90, 90], y:[TpoleS, TpoleN], mode:'markers', name:'Poles',
-      marker:{color:'#a371f7', size:10} },
+      line:{color:'#e8962c', dash:'dot', width:1} },
   ];
 
   Plotly.react('plot-5a', traces5a, layout({
-    title:{ text:`Summer Solstice Temperature vs Latitude`, font:{size:14} },
+    title:{ text:`NH Summer Solstice Temperature vs Latitude`, font:{size:14} },
     xaxis:{ title:'Latitude (°)',
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'] },
@@ -1180,32 +1164,24 @@ function plot5A() {
     margin:{ t:50, r:20, b:70, l:70 },
   }), CFG);
 
-  // ── Seasonal Hovmöller — monthly temperature snapshots ───────────────────
-  // Each month gets its own local EBM solve (no diffusion, for seasonal detail)
-  // using the monthly solar declination derived from obliquity.
+  // ── Seasonal Hovmöller heatmap (month × latitude) ─────────────────────────
+  // For each month compute the daily-mean insolation using that month's
+  // solar declination, then solve the local EBM.
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
-                  'Jul','Aug','Sep','Oct','Nov','Dec'];
+                   'Jul','Aug','Sep','Oct','Nov','Dec'];
   const hovZ = [];
   for (let m = 0; m < 12; m++) {
     const decl = monthlyDeclination(obl, m);
-    const Qm   = lats.map(l => solsticeInsolation(S0, decl, l));
-    const Tm   = Qm.map(q => {
-      const delta_F = a_ghg * Math.log(co2 / CO2_ref);
-      const Tw = (q * (1 - PLANET_ALBEDO[planet]) + delta_F - A_OLR) / B_OLR;
-      const Ti = (q * (1 - alpha_ice)              + delta_F - A_OLR) / B_OLR;
-      return Tw < -10 ? Ti : Tw;
-    });
-    hovZ.push(Tm);
+    hovZ.push(monthlyDiffEBM(S0, co2, decl, planet, diff, lats));
   }
-  const hovLats = lats;
 
-  // Transpose hovZ so rows=lats, cols=months (for x=month, y=lat)
-  const hovZT = hovLats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
+    // Transpose hovZ: rows=months, cols=lats → need rows=lats, cols=months for x=month, y=lat
+  const hovZT = lats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
 
   Plotly.react('plot-5a-hovm', [{
     z: hovZT,
     x: MONTHS,
-    y: hovLats,
+    y: lats,
     type: 'heatmap',
     colorscale: 'RdBu',
     reversescale: false,
@@ -1232,14 +1208,13 @@ function plot5A() {
   // ── Record block ───────────────────────────────────────────────────────────
   const rec = document.getElementById('rec5a-vals');
   rec.innerHTML = kv([
-    ['Summer-solstice N-pole temperature', TpoleN.toFixed(1)+' °C'],
-    ['Summer-solstice equatorial temperature', Teq.toFixed(1)+' °C'],
-    ['Summer-solstice S-pole temperature', TpoleS.toFixed(1)+' °C'],
-    ['Area-weighted mean (solstice)', Tgm.toFixed(1)+' °C'],
-    ['Ice-line latitude (summer solstice)', iceYour < -89 ? 'Fully frozen' : (Math.abs(iceYour).toFixed(0)+'°')],
+    ['NH Summer Pole temperature', TpoleN.toFixed(1)+' °C'],
+    ['Equatorial temperature (NH summer)', TeqS.toFixed(1)+' °C'],
+    ['NH Winter Pole temperature', TpoleS.toFixed(1)+' °C'],
+    ['Area-weighted annual mean T', Tgm.toFixed(1)+' °C'],
+    ['Ice-line latitude (NH summer)', iceYour < -89 ? 'Fully frozen' : (Math.abs(iceYour).toFixed(0)+'°')],
     ['Habitable latitude range', iceYour < -89 ? 'None (snowball)' : Math.abs(iceYour).toFixed(0)+'°–90° each hemisphere'],
-    ['High obliquity regime?', obl > 54 ? '⚠ Yes — poles briefly hotter than equator' : 'No'],
-    ['Map template', 'Eckert IV projection'],
+    ['High obliquity regime?', obl > 54 ? '⚠ Yes — poles hotter than equator annually' : 'No'],
   ]);
 }
 
@@ -1333,21 +1308,28 @@ function plot6() {
     xTickvals = [-90,-45,0,45,90];
     xTicktext = ['Anti-stellar','','Terminator','','Sub-stellar'];
   } else {
-    [xVals, Tvals] = latProfileRotating(S0, co2, obl, planet, diff);
+    let T_summer_6, T_winter_6;
+    [xVals, T_summer_6, T_winter_6] = latProfileRotating(S0, co2, obl, planet, diff);
+    Tvals = T_summer_6;
     xLabel   = 'Latitude (°)';
     xTickvals = [-90,-60,-30,0,30,60,90];
     xTicktext = ['90°S','60°S','30°S','Eq','30°N','60°N','90°N'];
+    // Store winter for plotting
+    xVals._winter = T_winter_6;
   }
 
   const weights  = xVals.map(x => d.isLocked ? 1 : Math.cos(x * Math.PI / 180));
   const wSum     = weights.reduce((a,b)=>a+b,0);
   const Tgm      = Tvals.reduce((acc,t,i)=>acc+t*weights[i],0) / wSum;
   const habFrac  = Tvals.filter(t=>t>-10 && t<100).length / Tvals.length;
+  const T_winter_plot = xVals._winter || null;
 
   Plotly.react('plot-6b', [
     { x:xVals, y:Tvals, mode:'lines',
-      name: d.isLocked ? 'Day–Night Temperature' : 'Summer Solstice Temperature',
-      line:{color:'#58a6ff', width:2.5} },
+      name: d.isLocked ? 'Day–Night Temperature' : 'NH Summer',
+      line:{color:'#f85149', width:2.5} },
+    ...(T_winter_plot ? [{ x:xVals, y:T_winter_plot, mode:'lines',
+      name:'NH Winter', line:{color:'#58a6ff', width:2.5, dash:'dash'} }] : []),
     { x:[xVals[0],xVals[xVals.length-1]], y:[-10,-10], mode:'lines', name:'Ice threshold (−10°C)',
       line:{color:'#1565C0',dash:'dot',width:1.5} },
     { x:[xVals[0],xVals[xVals.length-1]], y:[100,100], mode:'lines', name:'Boiling (100°C)',
@@ -1364,7 +1346,7 @@ function plot6() {
     ...(d.isLocked ? [{ x:[0,0], y:[-100,200], mode:'lines', name:'Terminator',
       line:{color:'#8b949e',dash:'dash',width:1} }] : []),
   ], layout({
-    title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'Summer Solstice Latitude Profile', font:{size:13} },
+    title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'NH Summer Solstice Latitude Profile', font:{size:13} },
     xaxis:{ title:xLabel, tickvals:xTickvals, ticktext:xTicktext },
     yaxis:{ title:'Temperature (°C)' },
     legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
@@ -1378,10 +1360,11 @@ function plot6() {
   const habitability = habFrac > 0.1 ? (Teq_w < 80 ? '✓ Potentially habitable' : '⚠ Too hot globally') :
                        '⚠ Mostly frozen (possible snowball)';
 
-  // Equatorial / polar / substellar key temperatures
-  const midIdx    = Math.round(Tvals.length / 2);
-  const T_equator = Tvals[midIdx];
-  const T_poleAvg = d.isLocked ? null : (Tvals[0]+Tvals[Tvals.length-1])/2;
+  // Key temperatures from spatial profile
+  const midIdx       = Math.round(Tvals.length / 2);
+  const T_equator    = Tvals[midIdx];
+  const T_summerPole = d.isLocked ? null : Tvals[Tvals.length-1];
+  const T_winterPole = d.isLocked ? null : (T_winter_plot ? T_winter_plot[T_winter_plot.length-1] : null);
 
   const rec = document.getElementById('rec6-vals');
   rec.innerHTML = kv([
@@ -1394,8 +1377,11 @@ function plot6() {
     d.isLocked
       ? ['Substellar / Terminator / Antistellar T',
           Tvals[Tvals.length-1].toFixed(1)+' / '+T_equator.toFixed(1)+' / '+Tvals[0].toFixed(1)+' °C']
-      : ['Equatorial / Polar T (solstice)',
-          T_equator.toFixed(1)+' / '+T_poleAvg.toFixed(1)+' °C'],
+      : ['NH Summer Pole temperature', T_summerPole.toFixed(1)+' °C'],
+    ...(d.isLocked ? [] : [
+      ['Equatorial temperature (NH summer)', T_equator.toFixed(1)+' °C'],
+      ['Winter Pole (SH) temperature', T_winterPole.toFixed(1)+' °C'],
+    ]),
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
     ['Gravity estimate', g_label],
     ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
