@@ -1178,12 +1178,12 @@ function plot5A() {
   }
 
     // Transpose hovZ: rows=months, cols=lats → need rows=lats, cols=months for x=month, y=lat
-  const hovZT = hovLats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
+  const hovZT = lats.map((_, li) => MONTHS.map((_, mi) => hovZ[mi][li]));
 
   Plotly.react('plot-5a-hovm', [{
     z: hovZT,
     x: MONTHS,
-    y: hovLats,
+    y: lats,
     type: 'heatmap',
     colorscale: 'RdBu',
     reversescale: false,
