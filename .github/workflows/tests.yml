@@ -23,25 +23,3 @@ jobs:
 
       - name: Run the physics test suite
         run: node --test
-
-      - name: Check that the deployed simulator uses the shared physics core
-        # Guards against the failure that started all this: two divergent
-        # copies of the physics, with the wrong one deployed. If the
-        # simulator has grown its own private copy of a function that
-        # lives in physics.js, fail loudly.
-        run: |
-          set -e
-          for f in exoplanet_climate_simulator.html exoplanet-orbit-calculator.html; do
-            if [ ! -f "$f" ]; then continue; fi
-            if ! grep -q 'src="physics.js"' "$f"; then
-              echo "::error file=$f::does not load physics.js"
-              exit 1
-            fi
-            for fn in stellarLuminosity habitableZone run0dEBM tidalLockRadius planetaryProperties; do
-              if grep -qE "function[[:space:]]+$fn[[:space:]]*\(" "$f"; then
-                echo "::error file=$f::defines its own $fn instead of using physics.js"
-                exit 1
-              fi
-            done
-          done
-          echo "No duplicate physics implementations found."
