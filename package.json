@@ -1,0 +1,11 @@
+{
+  "name": "exoplanet-tools-physics",
+  "version": "1.0.0",
+  "description": "Physics core for the exoplanet climate simulator, with a cross-language test contract.",
+  "main": "physics.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "private": true
+}
