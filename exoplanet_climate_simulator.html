@@ -200,6 +200,8 @@
   .tab-content.active { display: flex; flex-direction: column; gap: 12px; }
   .plot-container { flex: 1; min-height: 320px; }
   .record-block {
+    position: relative;
+    z-index: 1;
     background: var(--panel);
     border: 1px solid var(--border);
     border-left: 3px solid var(--accent);
@@ -217,6 +219,10 @@
   .warn { color: var(--yellow); background: rgba(210,153,34,0.08); border-color: var(--yellow); }
   .info-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
   .plot-half { min-height: 280px; }
+  /* Tab 5: taller plots, record panel below the fold. flex-shrink is off so
+     these keep their height instead of being squeezed by whatever follows. */
+  #plot-5a      { min-height: 480px; flex-shrink: 0; }
+  #plot-5a-hovm { min-height: 400px; flex-shrink: 0; }
 .rec-more { margin-top: 0.5rem; border-top: 1px solid #30363d; padding-top: 0.4rem; }
 .rec-more > summary {
   cursor: pointer; font-size: 0.78rem; color: #8b949e;
@@ -1036,8 +1042,8 @@ function plotOrbit() {
   const maxR = Math.max(d.hzOptOut, dist) * 1.2;
   Plotly.react('plot-orbit', traces, layout({
     title:{ text:'Orbit vs Habitable Zone', font:{size:14} },
-    xaxis:{ title:'AU', range:[-maxR, maxR], scaleanchor:'y' },
-    yaxis:{ title:'AU', range:[-maxR, maxR] },
+    xaxis:{ title:'AU', range:[-maxR, maxR], scaleanchor:'y', constrain:'domain' },
+    yaxis:{ title:'AU', range:[-maxR, maxR], constrain:'domain' },
     legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
     margin:{ t:50, r:20, b:60, l:70 },
   }), CFG);
