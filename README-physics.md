@@ -1,3 +1,5 @@
+![tests](https://github.com/BuchananGCSC/exoplanet-tools/actions/workflows/tests.yml/badge.svg)
+
 # Physics core: what changed and how to wire it in
 
 ## What this is
@@ -22,8 +24,6 @@ validation/validation.ipynb  JupyterLite validation notebook
 
 Run the tests with `node --test` from the repository root. No
 dependencies, Node 18 or newer.
-
-![tests](https://github.com/BuchananGCSC/exoplanet-tools/actions/workflows/tests.yml/badge.svg)
 
 ## Bugs this fixes
 
