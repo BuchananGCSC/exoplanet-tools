@@ -217,6 +217,13 @@
   .warn { color: var(--yellow); background: rgba(210,153,34,0.08); border-color: var(--yellow); }
   .info-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
   .plot-half { min-height: 280px; }
+.rec-more { margin-top: 0.5rem; border-top: 1px solid #30363d; padding-top: 0.4rem; }
+.rec-more > summary {
+  cursor: pointer; font-size: 0.78rem; color: #8b949e;
+  padding: 0.15rem 0; list-style-position: outside; user-select: none;
+}
+.rec-more > summary:hover { color: #58a6ff; }
+.rec-more-body { margin-top: 0.35rem; }
 .zone-legend {
   display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem;
   margin: 0.2rem 0 0.6rem 0; padding: 0.5rem 0.7rem;
@@ -1117,12 +1124,13 @@ function plotEBM() {
   }), CFG);
 
   const rec = document.getElementById('rec3-vals');
-  rec.innerHTML = kv([
+  rec.innerHTML = record([
     ['Baseline T (warm start, your CO₂)', Teq_w.toFixed(1)+' °C'],
     ['Baseline T (frozen start, your CO₂)', Teq_c.toFixed(1)+' °C'],
     ['Two stable climates possible?', bistable ? '⚠ Yes — bistable (hysteresis)' : 'No — single stable state'],
     ['ECS (2×CO₂ warming, 280→560 ppm)', '+'+ECS.toFixed(2)+' °C'],
     ['Your CO₂ equilibrium T', d.Teq.toFixed(1)+' °C'],
+    MORE,
     ['Planetary albedo used', alb.toFixed(2)+' ('+PLANET_LABELS[planet]+')'],
     ['Atmospheric pressure', pressure.toFixed(2)+' bar → '+d.atmLabel.toLowerCase()+' atmosphere'],
     ['⚠ Does axial tilt change this number?', 'No — this is a GLOBAL average. Tilt redistributes the same total energy across latitude & season; it never changes the planet-wide mean. See Tab 5/6 for that effect.'],
@@ -1192,8 +1200,11 @@ function plot5A() {
       ticktext:['90°S','60°S','30°S','Equator','30°N','60°N','90°N'] },
     yaxis:{ title:'Surface Temperature (°C)', range:[yLo, yHi] },
     shapes: zoneShapes(zones.bands, yLo, yHi),
-    legend:{ x:0.5, y:0.99, xanchor:'center', yanchor:'top', orientation:'h', font:{size:9} },
-    margin:{ t:50, r:20, b:70, l:70 },
+    // Legend sits below the axis, not floating inside the plot. Inside, it
+    // covered the top of the curves, which is exactly where a hot equator
+    // shows up -- the thing a student is most likely to be looking for.
+    legend:{ x:0.5, y:-0.22, xanchor:'center', yanchor:'top', orientation:'h', font:{size:9} },
+    margin:{ t:50, r:20, b:110, l:70 },
   }), CFG);
 
   // ── Zone legend ──────────────────────────────────────────────────────────
@@ -1236,13 +1247,14 @@ function plot5A() {
   }).join(' · ');
 
   const rec = document.getElementById('rec5a-vals');
-  rec.innerHTML = kv([
+  rec.innerHTML = record([
     ['Global mean temperature', seas.globalMeanC.toFixed(1)+' °C'],
     ['Equatorial annual mean', Teq.toFixed(1)+' °C'],
     ['Summer-solstice N-pole / S-pole', TpoleN.toFixed(1)+' / '+TpoleS.toFixed(1)+' °C'],
     ['Largest seasonal swing (any latitude)', swingSeasonal.toFixed(1)+' °C — set by how much heat the surface stores ('+PLANET_LABELS[planet]+')'],
     ['Pole–equator contrast (annual mean)', swingSpatial.toFixed(1)+' °C — this is what your Diffusion D controls'],
     ['Climate zones', bandSummary],
+    MORE,
     ['Livable surface fraction', (zones.habitableFraction*100).toFixed(0)+'% — thaws at some point in the year and never cooks'],
     ['Permanent ice line', (iceSouth===null?'Fully frozen':Math.abs(iceSouth).toFixed(0)+'°S') + ' / ' + (iceNorth===null?'Fully frozen':iceNorth.toFixed(0)+'°N')],
     ['High obliquity regime?', obl > 54 ? '⚠ Yes — poles receive more annual sunlight than the equator' : 'No'],
@@ -1319,12 +1331,13 @@ function plot5B() {
 
   const daynightSwing = Tsub - Tanti;
   const rec = document.getElementById('rec5b-vals');
-  rec.innerHTML = kv([
+  rec.innerHTML = record([
     ['Substellar temperature', Tsub.toFixed(1)+' °C'],
     ['Terminator temperature', Tterm.toFixed(1)+' °C'],
     ['Antistellar temperature', Tanti.toFixed(1)+' °C'],
     ['Global mean temperature', Tgm.toFixed(1)+' °C'],
     ['Day–night swing', daynightSwing.toFixed(1)+' °C'],
+    MORE,
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
     ['Diffusion coefficient D', diff.toFixed(2)+' (default for '+PLANET_LABELS[planet]+' was '+DIFFUSION_DEFAULTS[planet].toFixed(2)+')'],
     ['Eyeball Earth regime?', diff < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
@@ -1427,12 +1440,9 @@ function plot6() {
 
   const swingFull = Math.max(...Tvals) - Math.min(...Tvals);
   const rec = document.getElementById('rec6-vals');
-  rec.innerHTML = kv([
+  rec.innerHTML = record([
     ['Climate regime', d.regime],
     ['Stellar flux (S₀)', d.S0.toFixed(1)+' W/m²'],
-    ['0-D equilibrium T (warm start)', Teq_w.toFixed(1)+' °C'],
-    ['0-D equilibrium T (frozen start)', Teq_c.toFixed(1)+' °C'],
-    ['Two stable climates?', bistable ? '⚠ Yes — bistable (hysteresis)' : 'No'],
     ['Spatial mean T (profile)', Tgm.toFixed(1)+' °C'],
     d.isLocked
       ? ['Substellar / Terminator / Antistellar T',
@@ -1441,6 +1451,12 @@ function plot6() {
           T_equator.toFixed(1)+' / '+T_poleSouth.toFixed(1)+' / '+T_poleNorth.toFixed(1)+' °C'],
     ['Temperature swing (spatial)', swingFull.toFixed(1)+' °C — driven by tilt/lock geometry + heat transport, not by the global mean above'],
     ['Livable surface fraction', (habFrac*100).toFixed(0)+'%'],
+    ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
+    ['Habitability flag', habitability],
+    MORE,
+    ['0-D equilibrium T (warm start)', Teq_w.toFixed(1)+' °C'],
+    ['0-D equilibrium T (frozen start)', Teq_c.toFixed(1)+' °C'],
+    ['Two stable climates?', bistable ? '⚠ Yes — bistable (hysteresis)' : 'No'],
     ['Climate zones', summaryZones.bands.map(b => b.label).filter((v,i,a) => a.indexOf(v)===i).join(' · ')],
     d.isLocked
       ? ['Seasonal swing', 'None — a tidally locked planet has no seasons']
@@ -1448,8 +1464,6 @@ function plot6() {
     ['Assumed planet mass', d.planetMassEarth.toFixed(1)+' M⊕ (representative for '+PLANET_LABELS[planet]+'; used for the dynamo and locking estimates)'],
     ['Gravity estimate', g_label],
     ['Atmospheric pressure / thickness', pressure.toFixed(2)+' bar — '+d.atmLabel],
-    ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
-    ['Habitability flag', habitability],
     ['System age', age.toFixed(1)+' Gyr'+(d.ageExceedsLifespan ? ' — ⚠ exceeds this star\'s ~'+d.lifespanGyr.toFixed(1)+' Gyr lifespan' : '')],
     ['Magnetic field (simplified estimate)', d.magField + (d.isLocked ? ' (tidal lock reduces field organization)' : '')],
     ['Solution converged?', converged ? '✓ Yes' : '⚠ No — treat these numbers as provisional'],
@@ -1469,6 +1483,22 @@ function linspace(a, b, n) {
 function logspace(a, b, n) {
   return linspace(a, b, n).map(x => Math.pow(10, x));
 }
+// A record block with the handful of values a student copies into the
+// handout up top, and everything else folded into a disclosure. Same
+// information, a fraction of the vertical space. Pass the rows to keep
+// visible first; anything after the divider marker goes inside.
+const MORE = Symbol('more');
+function record(pairs) {
+  const cut = pairs.indexOf(MORE);
+  if (cut < 0) return kv(pairs);
+  const primary = kv(pairs.slice(0, cut));
+  const rest    = kv(pairs.slice(cut + 1));
+  const n = pairs.length - cut - 1;
+  return primary +
+    `<details class="rec-more"><summary>${n} more values, model notes &amp; caveats</summary>` +
+    `<div class="rec-more-body">${rest}</div></details>`;
+}
+
 function kv(pairs) {
   return pairs.map(([k,v]) =>
     `<div class="kv"><span class="k">${k}:</span><span class="v">${v}</span></div>`
