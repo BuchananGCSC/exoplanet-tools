@@ -299,9 +299,15 @@
     // cannot both be right. Re-tuning against the seasonal model settles
     // it in favour of the default: D_rel = 0.20 reproduces Earth's 14 degC
     // global mean and a 24 degC equator. The comment was the stale half.
-    earth:  { label: 'Earth-like',        albedo: 0.30, defaultD: 0.20, mixedLayerM: 8 },
-    desert: { label: 'Desert World',      albedo: 0.35, defaultD: 0.08, mixedLayerM: 2 },
-    ocean:  { label: 'Ocean Super-Earth', albedo: 0.25, defaultD: 0.40, mixedLayerM: 40 },
+    // massEarth is a REPRESENTATIVE mass, used only where the interface
+    // offers no mass control of its own (currently the dynamo estimate).
+    // It is here rather than in a private lookup table so that any code
+    // relying on it has to name it, and so the interface can tell the
+    // student what mass it assumed. The old version hid this, which meant
+    // picking "Desert World" silently guaranteed no magnetic field.
+    earth:  { label: 'Earth-like',        albedo: 0.30, defaultD: 0.20, mixedLayerM: 8,  massEarth: 1.0 },
+    desert: { label: 'Desert World',      albedo: 0.35, defaultD: 0.08, mixedLayerM: 2,  massEarth: 0.3 },
+    ocean:  { label: 'Ocean Super-Earth', albedo: 0.25, defaultD: 0.40, mixedLayerM: 40, massEarth: 3.0 },
   };
 
   /* ===================================================================
@@ -733,6 +739,79 @@
     };
   }
 
+  /* ===================================================================
+   * SECTION 9.5 — CLIMATE ZONES
+   *
+   * Turns a temperature profile into named bands a student can point at.
+   * Deliberately Koppen-flavoured, because that is the vocabulary an
+   * Earth science course already uses, but simplified to what a
+   * temperature-only model can honestly support: no precipitation, so no
+   * desert/rainforest distinction, only the thermal classes.
+   *
+   * Classification uses BOTH the warmest and coldest season, because
+   * they carry different information. Tundra and temperate forest can
+   * share an annual mean and differ completely in winter, and it is the
+   * winter that decides what can live there.
+   *
+   * On a tidally locked planet there are no seasons, so pass the same
+   * array for both and the bands come out as day-side rings.
+   * =================================================================== */
+
+  const CLIMATE_ZONES = [
+    { key: 'scorching',   label: 'Too hot for liquid-water life', color: '#7f1d1d' },
+    { key: 'tropical',    label: 'Tropical (no cold season)',     color: '#166534' },
+    { key: 'subtropical', label: 'Subtropical (mild winter)',     color: '#4d7c0f' },
+    { key: 'temperate',   label: 'Temperate (freezing winter)',   color: '#0e7490' },
+    { key: 'continental', label: 'Continental (severe winter)',   color: '#1e40af' },
+    { key: 'tundra',      label: 'Tundra (brief cool summer)',    color: '#6b21a8' },
+    { key: 'polar',       label: 'Polar (never thaws)',           color: '#334155' },
+  ];
+
+  const ZONE_BY_KEY = Object.fromEntries(CLIMATE_ZONES.map((z) => [z.key, z]));
+
+  /** Classify one location from its warmest and coldest season. */
+  function classifyClimate(warmestC, coldestC) {
+    if (warmestC > 50) return 'scorching';
+    if (warmestC < 0) return 'polar';
+    if (warmestC < 10) return 'tundra';
+    if (coldestC >= 18) return 'tropical';
+    if (coldestC >= 5) return 'subtropical';
+    if (coldestC >= -15) return 'temperate';
+    return 'continental';
+  }
+
+  /**
+   * Collapse a profile into contiguous zone bands.
+   * @returns {{bands:Array<{key,label,color,from,to}>, keys:string[],
+   *            habitableFraction:number}}
+   *   `from` and `to` are in the units of `coords` (latitude, or degrees
+   *   from the terminator). `habitableFraction` is the area-weighted
+   *   share of the surface in a zone that ever thaws and never cooks.
+   */
+  function climateZones(coords, warmestC, coldestC) {
+    const keys = coords.map((_, i) => classifyClimate(warmestC[i], coldestC[i]));
+    const bands = [];
+    let start = 0;
+    for (let i = 1; i <= keys.length; i++) {
+      if (i === keys.length || keys[i] !== keys[start]) {
+        const z = ZONE_BY_KEY[keys[start]];
+        bands.push({
+          key: z.key, label: z.label, color: z.color,
+          from: coords[start], to: coords[i - 1],
+        });
+        start = i;
+      }
+    }
+    const livable = new Set(['tropical', 'subtropical', 'temperate', 'continental', 'tundra']);
+    let num = 0, den = 0;
+    coords.forEach((c, i) => {
+      const w = Math.cos(c * DEG);
+      den += w;
+      if (livable.has(keys[i])) num += w;
+    });
+    return { bands, keys, habitableFraction: num / den };
+  }
+
   /* =================================================================== */
 
   return {
@@ -753,6 +832,8 @@
     dailyMeanInsolation, solsticeInsolation, monthlyDeclination,
     // solvers
     tridiagSolve, solveWithAlbedoFeedback, areaWeightedMean,
+    // climate zones
+    CLIMATE_ZONES, classifyClimate, climateZones,
     run0dEBM, latProfileEquilibrium, latProfileSeasonal, tidallyLockedProfile,
     // calculators
     kepler, planetaryProperties,
