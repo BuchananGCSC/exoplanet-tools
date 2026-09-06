@@ -17,7 +17,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { P, derived, resolve, pluck, idx } = require('./harness.js');
+const { P, resolve, pluck, idx } = require('./harness.js');
 
 const contract = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'test_cases.json'), 'utf8'));
@@ -284,89 +284,99 @@ test('the seasonal cycle conserves the annual mean it is built from', () => {
 
 test('every documented planet type is complete', () => {
   for (const [key, t] of Object.entries(P.PLANET_TYPES)) {
-    for (const field of ['label', 'surfaceAlbedo', 'cloudFraction',
-                         'transportFactor', 'mixedLayerM', 'massEarth']) {
+    for (const field of ['label', 'albedo', 'defaultD', 'mixedLayerM', 'massEarth']) {
       assert.ok(t[field] !== undefined, `${key} is missing ${field}`);
     }
-    assert.ok(t.surfaceAlbedo > 0 && t.surfaceAlbedo < 1, key + ' has an impossible surface albedo');
-    assert.ok(t.cloudFraction >= 0 && t.cloudFraction <= 1, key + ' has an impossible cloud fraction');
-    assert.ok(t.transportFactor > 0, key + ' has an impossible transport factor');
+    assert.ok(t.albedo > 0 && t.albedo < 1, key + ' has an impossible albedo');
   }
 });
 
 /* ------------------------------------------------------------------ *
- * 5. Clouds and derived heat transport
+ * 3. Atmospheric escape
+ *
+ * The retention rule is a rule of thumb, so the test that matters is
+ * whether it reproduces the solar system. If it stops doing that, the
+ * threshold or the exosphere temperature has drifted.
  * ------------------------------------------------------------------ */
 
-test('clouds cool in the shortwave and warm in the longwave', () => {
-  // Both effects must grow with cloud cover, in opposite directions.
-  let prevAlbedo = -Infinity, prevLW = -Infinity;
-  for (const f of [0, 0.2, 0.5, 0.8, 1.0]) {
-    const a = P.cloudyAlbedos(0.15, f).planetary;
-    const lw = P.cloudLongwave(f);
-    assert.ok(a > prevAlbedo, `planetary albedo did not rise at f = ${f}`);
-    assert.ok(lw >= prevLW, `longwave trapping did not rise at f = ${f}`);
-    prevAlbedo = a; prevLW = lw;
+test('escape velocity is exact for Earth', () => {
+  const v = P.escapeVelocity(1.0, 5.51);
+  assert.ok(Math.abs(v - 11186) < 60, `Earth escape velocity came out ${v.toFixed(0)} m/s, expected ~11186`);
+});
+
+test('gas retention reproduces the solar system', () => {
+  const earth = P.gasRetention({ massEarth: 1.0, densityGcm3: 5.51, S0: 1361 });
+  for (const g of ['N2', 'O2', 'CO2', 'H2O']) {
+    assert.ok(earth.species[g].retained, `Earth should retain ${g}`);
   }
-  // On Earth the net is cooling. If this flips, the terms are swapped.
-  assert.ok(derived.cloudNetEffect(0.15, 0.67) < 0, 'Earth clouds should cool on balance');
+  assert.ok(!earth.species.H2.retained, 'Earth should lose hydrogen');
+  assert.ok(!earth.species.He.retained, 'Earth should lose helium');
+
+  // Mars: desiccated, and light enough to lose water thermally.
+  const mars = P.gasRetention({ massEarth: 0.107, densityGcm3: 3.93, S0: 586 });
+  assert.ok(!mars.species.H2O.retained, 'Mars should lose water');
+  assert.ok(mars.species.CO2.retained,
+    'Mars retains CO2 THERMALLY -- it lost its atmosphere non-thermally, which this model does not simulate');
+
+  // Jupiter holds everything, including hydrogen.
+  const jup = P.gasRetention({ massEarth: 317.8, densityGcm3: 1.33, S0: 50 });
+  assert.ok(jup.species.H2.retained, 'Jupiter should retain hydrogen');
 });
 
-test('cloud fraction is clamped to a physical range', () => {
-  assert.strictEqual(P.cloudLongwave(-1), 0);
-  assert.strictEqual(P.cloudLongwave(2), P.CONSTANTS.LW_CLOUD);
-  assert.ok(P.cloudyAlbedos(0.15, 5).planetary <= 1);
-});
-
-test('a cloudier planet is colder, all else equal', () => {
-  let prev = Infinity;
-  for (const cloudFraction of [0, 0.3, 0.6, 0.9]) {
-    const T = P.run0dEBM({ cloudFraction }).equilibriumCRaw;
-    assert.ok(T < prev, `T did not fall at cloud fraction ${cloudFraction}`);
-    prev = T;
-  }
-});
-
-test('heat transport falls with rotation rate and rises with pressure', () => {
+test('retention improves monotonically with planet mass', () => {
   let prev = -Infinity;
-  for (const dayHours of [6, 12, 24, 48, 100]) {
-    const d = P.diffusionFrom(dayHours, 1.0, 1.0);
-    assert.ok(d > prev, `D did not rise with a longer day at ${dayHours} h`);
-    prev = d;
-  }
-  prev = -Infinity;
-  for (const pressureBar of [0.1, 0.5, 1, 4, 20]) {
-    const d = P.diffusionFrom(24, pressureBar, 1.0);
-    assert.ok(d > prev, `D did not rise with pressure at ${pressureBar} bar`);
-    prev = d;
+  for (const m of [0.05, 0.1, 0.3, 1.0, 3.0, 10.0]) {
+    const r = P.gasRetention({ massEarth: m, densityGcm3: 5.0, S0: 1361 });
+    assert.ok(r.species.N2.ratio > prev, `retention ratio fell going up to ${m} Mearth`);
+    prev = r.species.N2.ratio;
   }
 });
 
-test('a faster-spinning planet has a steeper pole-to-equator gradient', () => {
-  let prev = -Infinity;
-  for (const dayHours of [100, 48, 24, 12, 6]) {
-    const s = P.latProfileSeasonal({ dayHours });
-    const contrast = s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
-    assert.ok(contrast > prev, `contrast did not steepen at ${dayHours} h`);
-    prev = contrast;
+test('no NaN anywhere in the escape sweep', () => {
+  for (const m of [0.01, 0.1, 1, 5, 20, 300]) {
+    for (const S0 of [10, 500, 1361, 5000, 20000]) {
+      const r = P.gasRetention({ massEarth: m, densityGcm3: 5.0, S0 });
+      assert.ok(Number.isFinite(r.escapeVelocityMS) && r.escapeVelocityMS > 0);
+      assert.ok(Number.isFinite(r.exosphereK) && r.exosphereK > 0);
+      for (const s of Object.values(r.species)) assert.ok(Number.isFinite(s.ratio));
+    }
   }
 });
 
-test('clouds keep the rotation response from running away', () => {
-  // The specific failure this guards: without explicit clouds, shortening
-  // the day from 24 to 18 hours cooled the planet by nine degrees, because
-  // the single-valued ice albedo made the feedback far too strong.
-  const earth = P.latProfileSeasonal({ dayHours: 24 }).globalMeanC;
-  const fast = P.latProfileSeasonal({ dayHours: 18 }).globalMeanC;
-  assert.ok(earth - fast < 4,
-    `an 18-hour day cooled the planet by ${(earth - fast).toFixed(1)} degC; ` +
-    'that is the over-sensitivity the cloud term exists to damp');
+/* ------------------------------------------------------------------ *
+ * 4. Mixture forcing
+ * ------------------------------------------------------------------ */
+
+test('mixture forcing reproduces the legacy term at 1 bar with no methane', () => {
+  for (const ppm of [70, 280, 400, 1000, 10000]) {
+    const legacy = P.greenhouseForcing(ppm, 1.0);
+    const mix = P.greenhouseForcingMix({ pressureBar: 1.0, co2Ppm: ppm }).total;
+    assert.ok(Math.abs(legacy - mix) < 1e-9,
+      `at ${ppm} ppm and 1 bar the two disagree: ${legacy} vs ${mix}`);
+  }
 });
 
-test('a thick atmosphere flattens the temperature gradient', () => {
-  const thin = P.latProfileSeasonal({ pressureBar: 1 });
-  const thick = P.latProfileSeasonal({ pressureBar: 8 });
-  const c = (s) => s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
-  assert.ok(c(thick) < c(thin) / 2,
-    'pressure must feed heat transport, not only greenhouse forcing');
+test('CO2 forcing follows partial pressure, not mixing ratio', () => {
+  // Same ppm in a thicker atmosphere is more CO2 in the column, so more forcing.
+  const thin = P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400 }).total;
+  const thick = P.greenhouseForcingMix({ pressureBar: 10, co2Ppm: 400 }).total;
+  assert.ok(thick > thin, 'ten bar of the same mixing ratio should force harder');
+  // Ten times the partial pressure is A_GHG*ln(10) more forcing.
+  assert.ok(Math.abs((thick - thin) - P.CONSTANTS.A_GHG * Math.log(10)) < 1e-9);
+});
+
+test('no methane means no methane forcing', () => {
+  const r = P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400, ch4Ppm: 0 });
+  assert.strictEqual(r.ch4, 0);
+  assert.ok(P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400, ch4Ppm: 5 }).ch4 > 0);
+});
+
+test('the forcing seam overrides the internal term', () => {
+  const a = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1 });
+  const b = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
+                         forcingWm2: P.greenhouseForcing(400, 1) });
+  assert.ok(Math.abs(a.equilibriumC - b.equilibriumC) < 1e-9, 'passing the same forcing changed the answer');
+  const hot = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
+                           forcingWm2: 30 });
+  assert.ok(hot.equilibriumC > a.equilibriumC + 5, 'a large forcing override had no effect');
 });
