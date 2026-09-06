@@ -17,8 +17,9 @@ physics.js                   the calculations, no DOM, no globals
 test/test_cases.json         the cross-language contract
 test/harness.js              derived quantities the contract refers to
 test/physics.test.js         Node suite: contract + sweeps + invariants
-validation/physics.py        Python implementation for the notebook
-validation/validation.ipynb  JupyterLite validation notebook
+(validation lives in the JupyterLite repo, not here:
+ BuchananGCSC/jupyterlite -> content/physics.py,
+ content/validation.ipynb, content/test_cases.json)
 .github/workflows/tests.yml  runs the suite on every push
 ```
 

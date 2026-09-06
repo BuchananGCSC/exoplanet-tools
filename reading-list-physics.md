@@ -13,9 +13,10 @@ ADS from the title alone.
 
 **Reading order.** If you want a single path through it, read §1 for the
 energy balance framework, §2 for what makes it one-dimensional, §3 for
-where the boundaries come from, then dip into §4 through §7 as questions
-come up. The two starred items are the ones that would change how you
-teach this if you only read two.
+where the boundaries come from, then dip into §4 through §8 as questions
+come up. §7 is new and is where planet mass finally earns its keep. The
+starred items are the ones that would change how you teach this if you
+only read a few.
 
 ---
 
@@ -200,7 +201,91 @@ reference.
 
 ---
 
-## 7. Where the model is knowingly wrong
+## 7. Atmospheres: what a planet can keep, and what warms it
+
+This section is new, and it exists because planet mass used to have almost
+no consequences in the code. Escape velocity is what connects a planet's
+mass to the air above it, and it is the piece that lets "small, therefore
+dry" follow from something rather than be asserted.
+
+**★ Catling & Kasting, *Atmospheric Evolution on Inhabited and Lifeless
+Worlds*, Cambridge, 2017.**
+The book to own for this whole section. Chapter 5 is thermal escape done
+properly, including where the Jeans picture stops working. If you read one
+thing here, read this — it is the atmospheric counterpart to Pierrehumbert
+in §1, and between them they justify most of the model.
+*Justifies:* `gasRetention`, `JEANS_RETENTION_FACTOR`, the whole §3.5.
+
+**Jeans, *The Dynamical Theory of Gases*, Cambridge, 1916.**
+The original: molecules in the tail of the Maxwell–Boltzmann distribution
+exceed escape velocity and leave, so an atmosphere is always evaporating,
+just usually slowly. Worth showing students that the mechanism is
+statistical rather than a threshold — nothing "switches on."
+*Justifies:* the form of the retention test.
+
+**Chamberlain & Hunten, *Theory of Planetary Atmospheres*, Academic Press,
+2nd ed., 1987.**
+Where the exobase, the escape parameter and the factor-of-six style rule
+of thumb are set out carefully. Also the source of the honest caveat: the
+temperature that matters is the exosphere's, not the surface's, and they
+differ by a factor of three or four for Earth.
+*Justifies:* `T_EXO_EARTH_K`, `exosphereTemperature`.
+
+**Hunten, "Thermal and nonthermal escape mechanisms for terrestrial
+bodies," *Planetary and Space Science* 30, 773 (1982).**
+The catalogue of everything the model leaves out — sputtering, pickup
+ions, photochemical escape, impact erosion. Read it to know how much the
+thermal answer is missing, which for Mars is most of the story.
+*Justifies:* the non-thermal caveat the interface prints whenever the
+magnetic field comes out weak or absent.
+
+**★ Zahnle & Catling, "The Cosmic Shoreline: The Evidence that Escape
+Determines which Planets Have Atmospheres, and what this May Mean for
+Proxima Centauri b," *Astrophysical Journal* 843, 122 (2017).**
+Plots escape velocity against lifetime stellar XUV for every solar system
+body and every measured exoplanet, and finds a startlingly clean dividing
+line. This is the modern, empirical version of the diagram in §8 of the
+validation notebook, and it is where the M-dwarf problem becomes concrete:
+planets around active M dwarfs sit on the wrong side of the shoreline.
+*Justifies:* the warning that this model is optimistic around flare stars,
+since it scales exosphere temperature with bolometric flux rather than XUV.
+
+**Jakosky et al., "Mars' atmospheric history derived from upper-atmosphere
+measurements of ³⁸Ar/³⁶Ar," *Science* 355, 1408 (2017).**
+The MAVEN isotope result: most of Mars's atmosphere was lost to space,
+not buried. The reason the tool says, whenever a world's field comes out
+weak, that Mars kept CO₂ thermally and lost it anyway.
+
+**Wordsworth & Pierrehumbert, "Hydrogen-nitrogen greenhouse warming in
+Earth's early atmosphere," *Science* 339, 64 (2013).**
+Collision-induced absorption: hydrogen has no dipole, but two colliding
+molecules briefly do, and in a thick H₂ atmosphere that is a serious
+greenhouse effect. The model does not include it, which is why a
+hydrogen-rich world comes out too cold and now says so.
+
+**Byrne & Goldblatt, "Radiative forcing at high concentrations of
+well-mixed greenhouse gases," *Geophysical Research Letters* 41, 152
+(2014).**
+Extends the Myhre fits well past the range the sliders can reach. The
+place to go if you ever want the CO₂ term to stay honest at Venus-like
+partial pressures, or to know how badly the methane square root
+misbehaves when extrapolated.
+*Justifies:* the "beyond the fitted range" flag on methane.
+
+**On why there is no oxygen term.** Nothing new is needed here — it is in
+Pierrehumbert chapter 4 — but it is the question students ask most, so it
+is worth having the answer ready. Nitrogen and oxygen are homonuclear
+diatomics: two identical atoms, perfectly symmetric, no dipole moment, so
+their one vibrational mode does not couple to infrared. They cannot absorb
+the radiation a planet is trying to emit, and no amount of either warms
+it. CO₂ and methane can flex into asymmetric shapes and water is bent
+already, so those three absorb. An oxygen slider in the forcing would not
+be a simplification, it would be wrong; oxygen's real effect is ozone,
+and therefore ultraviolet shielding.
+
+---
+
+## 8. Where the model is knowingly wrong
 
 Not further reading so much as a list of things to be able to say out
 loud when a student pushes on the tool. Each has an entry above that
@@ -217,10 +302,26 @@ explains it properly.
   −100 and +150 °C exist because the equations keep producing numbers
   after the physics has stopped applying. The real behaviour past the
   inner edge is a runaway, and the model cannot represent it.
-- **The pressure and CO₂ terms double-count.** More total pressure at
-  fixed ppm means more CO₂, so part of the pressure forcing is the CO₂
-  forcing again. Kept separate because varying them independently is
-  pedagogically useful, not because it is right.
+- **The pressure and CO₂ terms used to double-count.** `greenhouseForcing`
+  still does: more total pressure at fixed ppm means more CO₂, so part of
+  its pressure term is the CO₂ term again. `greenhouseForcingMix`, which
+  is what the app now calls, does not — CO₂ enters as a partial pressure
+  and the broadening term is deliberately not added on top. The old
+  function is kept only so the test contract still has something to pin.
+- **No non-thermal escape.** The model computes molecules leaking away
+  because they are hot. It does not compute the solar wind stripping an
+  unprotected atmosphere, which is how Mars actually lost one it could
+  hold thermally. The interface says so; the model cannot.
+- **No photochemistry.** Ozone shielding is a threshold on oxygen
+  abundance, not a calculation. There is no ozone in the radiative scheme
+  and no ultraviolet in the energy budget.
+- **Hydrogen's greenhouse effect is missing.** Collision-induced
+  absorption is real and strong in thick H₂ atmospheres (see §7), so
+  hydrogen-rich worlds come out colder here than they should.
+- **Methane past ~100 ppm is extrapolation.** The square-root fit is
+  anchored near 1.7 ppm. The model flags it rather than clipping it,
+  because a student pushing that slider should be told the curve has left
+  its evidence behind.
 - **Tidal locking is binary.** Real planets can settle into higher-order
   spin-orbit resonances; Mercury is in a 3:2, not a 1:1.
 

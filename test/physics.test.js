@@ -290,3 +290,93 @@ test('every documented planet type is complete', () => {
     assert.ok(t.albedo > 0 && t.albedo < 1, key + ' has an impossible albedo');
   }
 });
+
+/* ------------------------------------------------------------------ *
+ * 3. Atmospheric escape
+ *
+ * The retention rule is a rule of thumb, so the test that matters is
+ * whether it reproduces the solar system. If it stops doing that, the
+ * threshold or the exosphere temperature has drifted.
+ * ------------------------------------------------------------------ */
+
+test('escape velocity is exact for Earth', () => {
+  const v = P.escapeVelocity(1.0, 5.51);
+  assert.ok(Math.abs(v - 11186) < 60, `Earth escape velocity came out ${v.toFixed(0)} m/s, expected ~11186`);
+});
+
+test('gas retention reproduces the solar system', () => {
+  const earth = P.gasRetention({ massEarth: 1.0, densityGcm3: 5.51, S0: 1361 });
+  for (const g of ['N2', 'O2', 'CO2', 'H2O']) {
+    assert.ok(earth.species[g].retained, `Earth should retain ${g}`);
+  }
+  assert.ok(!earth.species.H2.retained, 'Earth should lose hydrogen');
+  assert.ok(!earth.species.He.retained, 'Earth should lose helium');
+
+  // Mars: desiccated, and light enough to lose water thermally.
+  const mars = P.gasRetention({ massEarth: 0.107, densityGcm3: 3.93, S0: 586 });
+  assert.ok(!mars.species.H2O.retained, 'Mars should lose water');
+  assert.ok(mars.species.CO2.retained,
+    'Mars retains CO2 THERMALLY -- it lost its atmosphere non-thermally, which this model does not simulate');
+
+  // Jupiter holds everything, including hydrogen.
+  const jup = P.gasRetention({ massEarth: 317.8, densityGcm3: 1.33, S0: 50 });
+  assert.ok(jup.species.H2.retained, 'Jupiter should retain hydrogen');
+});
+
+test('retention improves monotonically with planet mass', () => {
+  let prev = -Infinity;
+  for (const m of [0.05, 0.1, 0.3, 1.0, 3.0, 10.0]) {
+    const r = P.gasRetention({ massEarth: m, densityGcm3: 5.0, S0: 1361 });
+    assert.ok(r.species.N2.ratio > prev, `retention ratio fell going up to ${m} Mearth`);
+    prev = r.species.N2.ratio;
+  }
+});
+
+test('no NaN anywhere in the escape sweep', () => {
+  for (const m of [0.01, 0.1, 1, 5, 20, 300]) {
+    for (const S0 of [10, 500, 1361, 5000, 20000]) {
+      const r = P.gasRetention({ massEarth: m, densityGcm3: 5.0, S0 });
+      assert.ok(Number.isFinite(r.escapeVelocityMS) && r.escapeVelocityMS > 0);
+      assert.ok(Number.isFinite(r.exosphereK) && r.exosphereK > 0);
+      for (const s of Object.values(r.species)) assert.ok(Number.isFinite(s.ratio));
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * 4. Mixture forcing
+ * ------------------------------------------------------------------ */
+
+test('mixture forcing reproduces the legacy term at 1 bar with no methane', () => {
+  for (const ppm of [70, 280, 400, 1000, 10000]) {
+    const legacy = P.greenhouseForcing(ppm, 1.0);
+    const mix = P.greenhouseForcingMix({ pressureBar: 1.0, co2Ppm: ppm }).total;
+    assert.ok(Math.abs(legacy - mix) < 1e-9,
+      `at ${ppm} ppm and 1 bar the two disagree: ${legacy} vs ${mix}`);
+  }
+});
+
+test('CO2 forcing follows partial pressure, not mixing ratio', () => {
+  // Same ppm in a thicker atmosphere is more CO2 in the column, so more forcing.
+  const thin = P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400 }).total;
+  const thick = P.greenhouseForcingMix({ pressureBar: 10, co2Ppm: 400 }).total;
+  assert.ok(thick > thin, 'ten bar of the same mixing ratio should force harder');
+  // Ten times the partial pressure is A_GHG*ln(10) more forcing.
+  assert.ok(Math.abs((thick - thin) - P.CONSTANTS.A_GHG * Math.log(10)) < 1e-9);
+});
+
+test('no methane means no methane forcing', () => {
+  const r = P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400, ch4Ppm: 0 });
+  assert.strictEqual(r.ch4, 0);
+  assert.ok(P.greenhouseForcingMix({ pressureBar: 1, co2Ppm: 400, ch4Ppm: 5 }).ch4 > 0);
+});
+
+test('the forcing seam overrides the internal term', () => {
+  const a = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1 });
+  const b = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
+                         forcingWm2: P.greenhouseForcing(400, 1) });
+  assert.ok(Math.abs(a.equilibriumC - b.equilibriumC) < 1e-9, 'passing the same forcing changed the answer');
+  const hot = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
+                           forcingWm2: 30 });
+  assert.ok(hot.equilibriumC > a.equilibriumC + 5, 'a large forcing override had no effect');
+});
