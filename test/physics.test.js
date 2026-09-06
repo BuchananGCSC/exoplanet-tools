@@ -17,7 +17,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { P, resolve, pluck, idx } = require('./harness.js');
+const { P, derived, resolve, pluck, idx } = require('./harness.js');
 
 const contract = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'test_cases.json'), 'utf8'));
@@ -239,7 +239,7 @@ test('a bigger, younger planet is likelier to have a dynamo', () => {
 test('the zero-D and one-D models agree on a uniformly lit planet', () => {
   // With no obliquity, no ice, and very strong heat transport, the
   // one-dimensional model should collapse onto the zero-dimensional one.
-  const zero = P.run0dEBM({ albedoWarm: 0.30, co2ppm: 280 }).equilibriumCRaw;
+  const zero = P.run0dEBM({ surfaceAlbedo: 0.15, cloudFraction: 0.67, co2ppm: 280 }).equilibriumCRaw;
   const one = P.latProfileSeasonal({ obliquityDeg: 0, dRel: 5.0, planetType: 'earth' });
   assert.ok(Math.abs(one.globalMeanC - zero) < 2.0,
     `0-D says ${zero.toFixed(2)}, 1-D says ${one.globalMeanC.toFixed(2)}`);
@@ -284,10 +284,13 @@ test('the seasonal cycle conserves the annual mean it is built from', () => {
 
 test('every documented planet type is complete', () => {
   for (const [key, t] of Object.entries(P.PLANET_TYPES)) {
-    for (const field of ['label', 'albedo', 'defaultD', 'mixedLayerM', 'massEarth']) {
+    for (const field of ['label', 'surfaceAlbedo', 'cloudFraction',
+                         'transportFactor', 'mixedLayerM', 'massEarth']) {
       assert.ok(t[field] !== undefined, `${key} is missing ${field}`);
     }
-    assert.ok(t.albedo > 0 && t.albedo < 1, key + ' has an impossible albedo');
+    assert.ok(t.surfaceAlbedo > 0 && t.surfaceAlbedo < 1, key + ' has an impossible surface albedo');
+    assert.ok(t.cloudFraction >= 0 && t.cloudFraction <= 1, key + ' has an impossible cloud fraction');
+    assert.ok(t.transportFactor > 0, key + ' has an impossible transport factor');
   }
 });
 
@@ -372,11 +375,178 @@ test('no methane means no methane forcing', () => {
 });
 
 test('the forcing seam overrides the internal term', () => {
-  const a = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1 });
-  const b = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
-                         forcingWm2: P.greenhouseForcing(400, 1) });
+  const base = { T0_K: 288, co2ppm: 400, S0: 1361, surfaceAlbedo: 0.15,
+                 cloudFraction: 0.67, pressureBar: 1 };
+  const a = P.run0dEBM(base);
+  const b = P.run0dEBM({ ...base, forcingWm2: P.greenhouseForcing(400, 1) });
   assert.ok(Math.abs(a.equilibriumC - b.equilibriumC) < 1e-9, 'passing the same forcing changed the answer');
-  const hot = P.run0dEBM({ T0_K: 288, co2ppm: 400, S0: 1361, albedoWarm: 0.3, pressureBar: 1,
-                           forcingWm2: 30 });
+  // The seam replaces the GAS forcing only. Cloud longwave trapping is a
+  // separate term and must survive the override, or a caller using the
+  // mixture path would silently lose its clouds' greenhouse effect.
+  assert.ok(Math.abs(b.cloudLongwaveWm2 - P.cloudLongwave(0.67)) < 1e-9,
+    'the forcing override deleted the cloud longwave term');
+  const hot = P.run0dEBM({ ...base, forcingWm2: 30 });
   assert.ok(hot.equilibriumC > a.equilibriumC + 5, 'a large forcing override had no effect');
+});
+
+/* ------------------------------------------------------------------ *
+ * 5. Clouds and derived heat transport
+ *
+ * The contract pins the calibration numbers. These pin the BEHAVIOUR:
+ * signs, monotonicity, and the two failure modes that made this round
+ * necessary in the first place.
+ * ------------------------------------------------------------------ */
+
+test('clouds cool in the shortwave and warm in the longwave', () => {
+  // Both effects must grow with cloud cover, in opposite directions.
+  let prevAlbedo = -Infinity, prevLW = -Infinity;
+  for (const f of [0, 0.2, 0.5, 0.8, 1.0]) {
+    const a = P.cloudyAlbedos(0.15, f).planetary;
+    const lw = P.cloudLongwave(f);
+    assert.ok(a > prevAlbedo, `planetary albedo did not rise at f = ${f}`);
+    assert.ok(lw >= prevLW, `longwave trapping did not rise at f = ${f}`);
+    prevAlbedo = a; prevLW = lw;
+  }
+  // On Earth the net is cooling. If this flips, the terms are swapped.
+  assert.ok(derived.cloudNetEffect(0.15, 0.67) < 0, 'Earth clouds should cool on balance');
+});
+
+test('cloud fraction is clamped to a physical range', () => {
+  assert.strictEqual(P.cloudLongwave(-1), 0);
+  assert.strictEqual(P.cloudLongwave(2), P.CONSTANTS.LW_CLOUD);
+  assert.ok(P.cloudyAlbedos(0.15, 5).planetary <= 1);
+});
+
+test('a cloudier planet is colder, all else equal', () => {
+  let prev = Infinity;
+  for (const cloudFraction of [0, 0.3, 0.6, 0.9]) {
+    const T = P.run0dEBM({ cloudFraction }).equilibriumCRaw;
+    assert.ok(T < prev, `T did not fall at cloud fraction ${cloudFraction}`);
+    prev = T;
+  }
+});
+
+test('heat transport falls with rotation rate and rises with pressure', () => {
+  let prev = -Infinity;
+  for (const dayHours of [6, 12, 24, 48, 100]) {
+    const d = P.diffusionFrom(dayHours, 1.0, 1.0);
+    assert.ok(d > prev, `D did not rise with a longer day at ${dayHours} h`);
+    prev = d;
+  }
+  prev = -Infinity;
+  for (const pressureBar of [0.1, 0.5, 1, 4, 20]) {
+    const d = P.diffusionFrom(24, pressureBar, 1.0);
+    assert.ok(d > prev, `D did not rise with pressure at ${pressureBar} bar`);
+    prev = d;
+  }
+});
+
+test('a faster-spinning planet has a steeper pole-to-equator gradient', () => {
+  let prev = -Infinity;
+  for (const dayHours of [100, 48, 24, 12, 6]) {
+    const s = P.latProfileSeasonal({ dayHours });
+    const contrast = s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
+    assert.ok(contrast > prev, `contrast did not steepen at ${dayHours} h`);
+    prev = contrast;
+  }
+});
+
+test('clouds keep the rotation response from running away', () => {
+  // The specific failure this guards: without explicit clouds, shortening
+  // the day from 24 to 18 hours cooled the planet by nine degrees, because
+  // the single-valued ice albedo made the feedback far too strong.
+  const earth = P.latProfileSeasonal({ dayHours: 24 }).globalMeanC;
+  const fast = P.latProfileSeasonal({ dayHours: 18 }).globalMeanC;
+  assert.ok(earth - fast < 4,
+    `an 18-hour day cooled the planet by ${(earth - fast).toFixed(1)} degC; ` +
+    'that is the over-sensitivity the cloud term exists to damp');
+});
+
+test('a thick atmosphere flattens the temperature gradient', () => {
+  const thin = P.latProfileSeasonal({ pressureBar: 1 });
+  const thick = P.latProfileSeasonal({ pressureBar: 8 });
+  const c = (s) => s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
+  assert.ok(c(thick) < c(thin) / 2,
+    'pressure must feed heat transport, not only greenhouse forcing');
+});
+
+/* ------------------------------------------------------------------ *
+ * 6. The seam between the water-inventory surface and the cloud deck
+ *
+ * These two pieces of physics arrived from different directions and were
+ * merged. Everything below is a test that they were merged correctly
+ * rather than left running in parallel.
+ * ------------------------------------------------------------------ */
+
+test('the water anchors and the named planet types are the same worlds', () => {
+  const pairs = [[0.0, 'desert'], [0.5, 'earth'], [1.0, 'ocean']];
+  for (const [w, key] of pairs) {
+    const sp = P.surfaceProperties(w);
+    const t = P.PLANET_TYPES[key];
+    for (const field of ['surfaceAlbedo', 'cloudFraction', 'transportFactor', 'mixedLayerM']) {
+      assert.ok(Math.abs(sp[field] - t[field]) < 1e-9,
+        `water fraction ${w} and planet type ${key} disagree on ${field}: ` +
+        `${sp[field]} vs ${t[field]}`);
+    }
+  }
+});
+
+test('a wetter world is darker, cloudier, and better at moving and storing heat', () => {
+  let prev = null;
+  for (const w of [0, 0.25, 0.5, 0.75, 1]) {
+    const s = P.surfaceProperties(w);
+    if (prev) {
+      assert.ok(s.surfaceAlbedo < prev.surfaceAlbedo, `surface albedo did not fall at w = ${w}`);
+      assert.ok(s.cloudFraction > prev.cloudFraction, `cloud cover did not rise at w = ${w}`);
+      assert.ok(s.transportFactor > prev.transportFactor, `transport did not rise at w = ${w}`);
+      assert.ok(s.mixedLayerM > prev.mixedLayerM, `heat storage did not rise at w = ${w}`);
+    }
+    prev = s;
+  }
+});
+
+test('surfaceProperties reports a planetary albedo consistent with its own cloud deck', () => {
+  for (const w of [0, 0.3, 0.5, 0.8, 1]) {
+    const s = P.surfaceProperties(w);
+    const expected = P.cloudyAlbedos(s.surfaceAlbedo, s.cloudFraction).planetary;
+    assert.ok(Math.abs(s.planetaryAlbedo - expected) < 1e-12,
+      `planetary albedo at w = ${w} does not follow from its own parts`);
+  }
+});
+
+test('cloud cover can be overridden independently of surface water', () => {
+  // The interface derives a default cloud cover from the water inventory
+  // and then lets a student break the link. Both halves have to work.
+  const wet = P.surfaceProperties(1.0);
+  const asIs = P.latProfileSeasonal({
+    surfaceAlbedo: wet.surfaceAlbedo, cloudFraction: wet.cloudFraction,
+    transportFactor: wet.transportFactor, mixedLayerM: wet.mixedLayerM });
+  const cleared = P.latProfileSeasonal({
+    surfaceAlbedo: wet.surfaceAlbedo, cloudFraction: 0.0,
+    transportFactor: wet.transportFactor, mixedLayerM: wet.mixedLayerM });
+  assert.strictEqual(cleared.cloudFraction, 0);
+  assert.ok(cleared.globalMeanC > asIs.globalMeanC,
+    'stripping the cloud deck off a dark ocean world should warm it');
+});
+
+test('every 1-D entry point reports the transport it actually used', () => {
+  const opts = { dayHours: 36, pressureBar: 2, transportFactor: 1.3, surfaceAlbedo: 0.2, cloudFraction: 0.5 };
+  const expected = P.diffusionFrom(36, 2, 1.3);
+  for (const fn of ['latProfileSeasonal', 'latProfileEquilibrium']) {
+    const r = P[fn](opts);
+    assert.ok(Math.abs(r.dRel - expected) < 1e-12,
+      `${fn} reported D = ${r.dRel}, derived D = ${expected}`);
+    assert.strictEqual(r.cloudFraction, 0.5, fn + ' lost its cloud fraction');
+  }
+  // Locked planets are the deliberate exception: no rotation scaling.
+  const locked = P.tidallyLockedProfile(opts);
+  assert.ok(Math.abs(locked.dRel - P.CONSTANTS.D_LOCKED_DEFAULT * 1.3) < 1e-12,
+    'a tidally locked planet was rotation-scaled after all');
+});
+
+test('an explicit dRel still overrides the derived one', () => {
+  // The contract cases pin transport directly, and so does anything
+  // reproducing a pre-2026 result. That escape hatch has to stay open.
+  const r = P.latProfileSeasonal({ dRel: 0.35, dayHours: 6 });
+  assert.strictEqual(r.dRel, 0.35);
 });

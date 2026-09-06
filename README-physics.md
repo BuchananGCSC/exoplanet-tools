@@ -96,6 +96,34 @@ warms a planet by feeding its poles more annual sunlight. Five years is a
 choice, not a measurement; the notebook has a cell for testing how much
 it matters.
 
+**Clouds are an explicit term, not a tuned albedo.** `PLANET_TYPES` no
+longer has a single `albedo`. It has `surfaceAlbedo` (the ground) and
+`cloudFraction` (the deck above it), and clouds now act in both directions:
+reflecting sunlight (cooling) and trapping infrared (warming). `A_OLR` moved
+from 210.0 to 236.3 to compensate for the longwave term becoming separate.
+Calibration is checked against CERES in the test suite.
+
+`SURFACE_ANCHORS` carries the same change: the water-inventory slider now
+produces `surfaceAlbedo`, `cloudFraction`, `transportFactor` and
+`mixedLayerM` rather than a planetary albedo and a diffusion coefficient.
+The three named planet types are exactly the two endpoints and the midpoint
+of that axis, and a test asserts it, so the presets and the slider cannot
+drift apart.
+
+**Heat transport is derived, not chosen.** The Diffusion D slider is gone,
+replaced by a Day length slider running 6 to 100 hours on a log scale.
+`diffusionFrom(dayHours, pressureBar, transportFactor)` computes D following
+Williams & Kasting 1997. `defaultD` per planet type is replaced by
+`transportFactor`, which stands in for ocean circulation. Tidally locked
+planets deliberately keep a bounded `D_LOCKED_DEFAULT` instead, because
+deriving transport from an orbital period gives a flat, contrast-free
+planet.
+
+**The `forcingWm2` seam only replaces the GAS forcing.** Cloud longwave
+trapping is added on top of it inside every solver. An interface computing
+its own forcing from `greenhouseForcingMix` therefore keeps its clouds
+rather than silently deleting them; a test pins this.
+
 **Effective heat capacity is now a per-planet-type property.** It sets
 the thermal relaxation time, so it controls how large the seasonal swing
 is. A dry world stores almost no heat and swings 45 °C at midlatitudes; a
@@ -130,23 +158,33 @@ students can see and reason about, which it did not have before.
    } = Physics;
    ```
 
-4. Signature changes to fix at the call sites:
+4. `state.diff` becomes `state.dayHours`, and the `sl-diff` slider becomes
+   `sl-day` on a log scale. Cloud cover gets a slider of its own (`sl-cloud`)
+   that tracks the water-inventory slider until a student moves it.
+   `derive()` returns the computed `dRel` so every tab and the record block
+   report the same number.
+
+5. Signature changes to fix at the call sites:
 
    | old | new |
    |---|---|
    | `habitableZone(m)` returns `[inner, outer]` | returns an object; use `.conservative` and `.optimistic` |
-   | `run0dEBM(T0, CO2, S0, alb, P)` positional | `run0dEBM({ T0_K, co2ppm, S0, albedoWarm, pressureBar })` |
+   | `run0dEBM(T0, CO2, S0, alb, P)` positional | `run0dEBM({ T0_K, co2ppm, S0, surfaceAlbedo, cloudFraction, pressureBar })` |
    | `latProfileRotating(...)` returns `[lats, temps, clipped]` | `latProfileSeasonal({...})` returns an object |
    | `tlProfile(...)` returns an array triple | `tidallyLockedProfile({...})` returns an object |
    | `magneticFieldEstimate(type, age, locked)` | `magneticFieldEstimate(massEarth, age, locked)` |
    | `tidalLockRadius(m, mp)` | `tidalLockRadius(m, mp, ageGyr)` |
+   | `PLANET_TYPES[x].albedo` | `cloudyAlbedos(surfaceAlbedo, cloudFraction).planetary` |
+   | `PLANET_TYPES[x].defaultD` | `diffusionFrom(dayHours, pressureBar, transportFactor)` |
+   | `surfaceProperties(w).albedo` / `.dRel` | `.surfaceAlbedo` + `.cloudFraction` / `.transportFactor` |
+   | `latProfileSeasonal({ dRel })` | `latProfileSeasonal({ dayHours, transportFactor })` |
 
-5. `latProfileSeasonal` takes about 50 ms for an Earth-like planet and up
+6. `latProfileSeasonal` takes about 50 ms for an Earth-like planet and up
    to 150 ms for a dry world, because it marches until the annual cycle
    repeats. That is fine on a click and visible on a slider drag, so
    debounce slider input by about 150 ms before recomputing.
 
-6. Show the flags. Every model function returns `converged` and
+7. Show the flags. Every model function returns `converged` and
    `outOfRange`. A result that did not converge, or that hit the guard
    rails, is the most teachable moment the tool produces, and it should
    read as a finding about the limits of a linearised model rather than

@@ -534,6 +534,18 @@
           <div class="slider-label">Surface water <span id="lbl-water">mixed land and sea</span></div>
           <input type="range" id="sl-water" min="0" max="1" step="0.01" value="0.5">
         </div>
+        <!-- Cloud cover follows the water on the ground until a student
+             deliberately breaks the link. Both halves are the lesson: water
+             makes cloud, and cloud does two opposite things to the budget. -->
+        <div class="slider-row">
+          <div class="slider-label">Cloud cover <span id="lbl-cloud">67% (from water)</span></div>
+          <input type="range" id="sl-cloud" min="0" max="1" step="0.01" value="0.67">
+        </div>
+        <div class="chain-so" style="font-size:11px;margin-top:4px">
+          Clouds <b>cool</b> by reflecting sunlight and <b>warm</b> by trapping
+          infrared. On Earth the reflection wins, by about 20 W/m². Drag this to
+          break the link with surface water; the water slider restores it.
+        </div>
       </div>
       <!-- The chain the interface used to leave out. Mass reached only the
            tidal-lock radius and the dynamo; albedo, heat transport and heat
@@ -597,13 +609,22 @@
     <div id="sidebar-heattransport">
       <div class="section-header">🌬️ Heat Transport (5 & 6)</div>
       <div class="slider-group">
+        <!-- Log slider: 6 h to 100 h is a factor of 17, and the interesting
+             end is the fast one. -->
         <div class="slider-row">
-          <div class="slider-label">Diffusion D <span id="lbl-diff">0.20</span></div>
-          <input type="range" id="sl-diff" min="0.01" max="0.7" step="0.01" value="0.2">
+          <div class="slider-label">Day length <span id="lbl-day">24.0 h</span></div>
+          <input type="range" id="sl-day" min="0.778" max="2" step="0.005" value="1.380">
         </div>
       </div>
+      <!-- D is no longer a slider. It is derived here, in front of the
+           student, from the three things that actually set it. -->
+      <div class="chain" id="transport-chain"></div>
       <div class="record-block" style="padding:8px 12px;font-size:11px" id="diff-hint">
-        Default set by Planet Type — Ocean worlds get strong transport (smaller swings), Desert worlds get weak transport (bigger swings). Drag to override.
+        A fast-spinning planet has stronger Coriolis deflection, narrower
+        circulation cells, and moves <b>less</b> heat to its poles — so a short
+        day means a steeper equator-to-pole gradient. Beyond about 100 hours
+        this model stops applying: everything here is daily-averaged, and a
+        very slow rotator has a day–night swing the model cannot see.
       </div>
     </div>
 
@@ -945,6 +966,7 @@ const {
   climateZones, areaWeightedMean,
   greenhouseForcingMix, gasRetention, GAS_SPECIES, JEANS_RETENTION_FACTOR,
   thermalSpeed, surfaceProperties, atmosphereMixture, ozoneShielding,
+  cloudyAlbedos, cloudLongwave, diffusionFrom,
   kepler, planetaryProperties,
   PLANET_TYPES, DENSITY_PRESETS, MODEL_RANGE, CONSTANTS,
 } = Physics;
@@ -1040,6 +1062,42 @@ function updateSidebarEmphasis() {
   });
 }
 
+// Day length reads as hours until it gets long enough that days are the
+// unit a student thinks in.
+function fmtDay(h) {
+  return h < 48 ? h.toFixed(1) + ' h' : h.toFixed(0) + ' h (' + (h / 24).toFixed(1) + ' Earth days)';
+}
+
+// Renders day length -> pressure -> ocean -> the diffusion coefficient the
+// model actually uses. D used to be a slider, which asked a student to have
+// an intuition for a quantity that has no everyday meaning. Now the three
+// things that set it are the controls, and D is shown as a consequence.
+function renderTransportChain() {
+  const el = document.getElementById('transport-chain');
+  if (!el) return;
+  const d = derive();
+  const rel = d.dRel / CONSTANTS.D_EARTH_REL;
+  const verdict = d.isLocked
+    ? 'This world is <b>tidally locked</b>, so its day length does not apply: ' +
+      'a locked planet turns once per orbit. Tab 6 uses a fixed transport of D = ' +
+      d.lockedD.toFixed(2) + ' instead.'
+    : 'Heat moves ' + (rel > 1.15 ? '<b>more</b> readily than on Earth, so a flatter profile'
+        : rel < 0.85 ? '<b>less</b> readily than on Earth, so a steeper equator-to-pole gradient'
+        : 'about as readily as on Earth') + '.';
+  el.innerHTML =
+    '<div class="chain-step"><span class="ca">Day length</span><span class="cb">' +
+      fmtDay(state.dayHours) + ' \u2192 \u00d7' +
+      Math.pow(state.dayHours / CONSTANTS.DAY_HOURS_EARTH, CONSTANTS.D_ROTATION_EXPONENT).toFixed(2) +
+      '</span></div>' +
+    '<div class="chain-step"><span class="ca">\u00d7 Pressure</span><span class="cb">' +
+      state.pressure.toFixed(2) + ' bar \u2192 \u00d7' + state.pressure.toFixed(2) + '</span></div>' +
+    '<div class="chain-step"><span class="ca">\u00d7 Ocean</span><span class="cb">' +
+      d.surface.label + ' \u2192 \u00d7' + d.surface.transportFactor.toFixed(2) + '</span></div>' +
+    '<div class="chain-step chain-keeps"><span class="ca">= Transport D</span><span class="cb"><b>' +
+      d.dRel.toFixed(3) + '</b> (Earth: ' + CONSTANTS.D_EARTH_REL.toFixed(2) + ')</span></div>' +
+    '<div class="chain-so">' + verdict + '</div>';
+}
+
 // Renders mass -> gravity -> escape velocity -> what it holds -> and therefore
 // what the surface is like. This is the reasoning the planet-type control used
 // to leave entirely implicit.
@@ -1054,8 +1112,10 @@ function renderMassChain() {
   const loses = sp.filter(x => !x.retained).map(x => x.label);
 
   const wet = d.retention.species.H2O.retained;
-  const consequence = 'Surface set to <b>' + d.surface.label + '</b>: albedo ' +
-    d.albedo.toFixed(2) + ', and it stores ' +
+  const consequence = 'Surface set to <b>' + d.surface.label + '</b>: ground albedo ' +
+    d.surfaceAlbedo.toFixed(2) + ' under ' + (d.cloudFraction * 100).toFixed(0) +
+    '% cloud, so the planet as a whole reflects ' + d.albedo.toFixed(2) +
+    '. It stores ' +
     (d.surface.mixedLayerM < 4 ? 'almost no heat, so it swings hard between seasons.'
       : d.surface.mixedLayerM > 20 ? 'a great deal of heat, so its seasons are mild.'
       : 'a moderate amount of heat.') +
@@ -1173,9 +1233,17 @@ const CFG = { responsive: true, displayModeBar: false };
 //  STATE
 // ───────────────────────────────────────────────────────────────────
 let state = {
-  mass: 1.0, dist: 1.0, obl: 23.4, ecc: 0.0, diff: 0.2, age: 4.5,
+  mass: 1.0, dist: 1.0, obl: 23.4, ecc: 0.0, age: 4.5,
+  // Day length REPLACES the old Diffusion D slider. D was a number with no
+  // everyday meaning that a student was asked to have an intuition for;
+  // day length has one, and the model derives D from it.
+  dayHours: 24,
   // the planet itself, no longer a dropdown
   pmass: 1.0, pdensity: 5.51, water: 0.5,
+  // Cloud cover follows the water inventory until a student moves it, at
+  // which point the link is broken deliberately and stays broken. cloudAuto
+  // is what remembers which of those two situations we are in.
+  cloud: 0.67, cloudAuto: true,
   // the atmosphere, as amounts rather than a named type
   pressure: 1.0, co2: 400, o2: 209000, h2: 0, ch4: 0,
 };
@@ -1184,9 +1252,12 @@ let state = {
 // the star list already uses, so the named worlds the teacher guide refers to
 // stay reachable without the controls being a menu.
 const PLANET_PRESETS = {
-  desert: { pmass: 0.107, pdensity: 3.93, water: 0.02 },
-  earth:  { pmass: 1.0,   pdensity: 5.51, water: 0.50 },
-  ocean:  { pmass: 3.0,   pdensity: 4.00, water: 0.95 },
+  // Day length is part of a named world now, not a leftover slider position.
+  // Mars turns in 24.6 h; the Super-Earth is given a slow 40 h spin so the
+  // preset shows what weak Coriolis does to a temperature gradient.
+  desert: { pmass: 0.107, pdensity: 3.93, water: 0.02, dayHours: 24.6, cloudAuto: true },
+  earth:  { pmass: 1.0,   pdensity: 5.51, water: 0.50, dayHours: 24,   cloudAuto: true },
+  ocean:  { pmass: 3.0,   pdensity: 4.00, water: 0.95, dayHours: 40,   cloudAuto: true },
 };
 
 const GAS_LABEL = { N2: 'nitrogen', O2: 'oxygen', CO2: 'carbon dioxide',
@@ -1218,13 +1289,24 @@ let activeTab = 't1';
 //  DERIVED
 // ───────────────────────────────────────────────────────────────────
 function derive() {
-  const { mass, dist, co2, obl, ecc, diff, pressure, age } = state;
+  const { mass, dist, co2, obl, ecc, pressure, age } = state;
   // Surface properties now follow from one physical quantity, the water
   // inventory, instead of being bundled behind a name.
   const surface = surfaceProperties(state.water);
+  // Cloud cover follows the water unless the student has taken it over.
+  const cloudFraction = state.cloudAuto ? surface.cloudFraction : state.cloud;
+  const cl = cloudyAlbedos(surface.surfaceAlbedo, cloudFraction);
+  // Heat transport is DERIVED, not set. Day length and pressure come from the
+  // student; the ocean-circulation factor comes from the water inventory.
+  // Tidally locked worlds are deliberately excluded from the rotation
+  // scaling -- their rotation equals their orbital period, which flattens
+  // the profile completely. See D_LOCKED_DEFAULT in physics.js.
+  const dRel = diffusionFrom(state.dayHours, pressure, surface.transportFactor);
+  const lockedD = CONSTANTS.D_LOCKED_DEFAULT * surface.transportFactor;
+  const cloudLW = cloudLongwave(cloudFraction);
   const mixture = atmosphereMixture({ co2Ppm: co2, o2Ppm: state.o2,
                                      h2Ppm: state.h2, ch4Ppm: state.ch4 });
-  const type = { albedo: surface.albedo, massEarth: state.pmass };
+  const type = { albedo: cl.planetary, massEarth: state.pmass };
 
   const lum = stellarLuminosity(mass);
   const teff = stellarTeff(mass);
@@ -1249,7 +1331,8 @@ function derive() {
   const bulkRetained = bulkRatio >= JEANS_RETENTION_FACTOR;
   const dF = mixForcing(co2, pressure);
 
-  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0, albedoWarm: type.albedo,
+  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0,
+                         surfaceAlbedo: surface.surfaceAlbedo, cloudFraction,
                          pressureBar: pressure, forcingWm2: dF });
   const Teq = ebm.equilibriumC;
   const beyondValidity = ebm.outOfRange;
@@ -1269,7 +1352,12 @@ function derive() {
            lockR, S0, inHz, inHzOptimistic, isLocked, Teq, hzMod, regime, atmLabel,
            beyondValidity, lifespanGyr, ageExceedsLifespan, magField,
            planetMassEarth: state.pmass, density, retention, dF,
-           albedo: surface.albedo, surface, mixture,
+           // albedo is the PLANETARY one -- surface plus cloud deck -- which
+           // is what a telescope would measure and what the old single-albedo
+           // code was implicitly using.
+           albedo: cl.planetary, surfaceAlbedo: surface.surfaceAlbedo,
+           cloudFraction, cloudLW, dRel, lockedD,
+           surface, mixture,
            bulkRatio, bulkRetained, bulkThermal };
 }
 
@@ -1277,7 +1365,7 @@ function derive() {
 //  SIDEBAR UPDATE
 // ───────────────────────────────────────────────────────────────────
 function updateSidebar() {
-  const { mass, dist, co2, obl, ecc, diff, pressure, age } = state;
+  const { mass, dist, co2, obl, ecc, pressure, age } = state;
   const d = derive();
 
   document.getElementById('lbl-mass').textContent = mass.toFixed(2);
@@ -1293,7 +1381,9 @@ function updateSidebar() {
     (derive().mixture.fractions.N2 * 100).toFixed(derive().mixture.fractions.N2 > 0.99 ? 0 : 1) + '%';
   document.getElementById('lbl-pressure').textContent = pressure.toFixed(2);
   document.getElementById('lbl-obl').textContent = obl.toFixed(1);
-  document.getElementById('lbl-diff').textContent = diff.toFixed(2);
+  document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
+  document.getElementById('lbl-cloud').textContent =
+    (d.cloudFraction * 100).toFixed(0) + '%' + (state.cloudAuto ? ' (from water)' : ' (set by you)');
 
   document.getElementById('badge-type').textContent = d.spType;
   document.getElementById('badge-lum').textContent = d.lum.toFixed(3)+' L☉';
@@ -1319,6 +1409,7 @@ function updateSidebar() {
 
   document.getElementById('lbl-ch4').textContent = fmtAmount(state.ch4);
   renderMassChain();
+  renderTransportChain();
   renderAtmosphereWarning();
 
   updateSidebarEmphasis();
@@ -1482,9 +1573,12 @@ function plotEBM() {
   const S0 = d.S0;
   const alb = d.albedo;
   // forcingWm2 is recomputed per CO2 value, so the sensitivity curve reflects
-  // the actual mixture -- partial pressure and methane included.
+  // the actual mixture -- partial pressure and methane included. The cloud
+  // longwave term is added inside run0dEBM, on top of whatever is passed
+  // here, so overriding the gas forcing does not silently delete the clouds.
   const ebm = (T0, c, s0) => run0dEBM(
-    { T0_K: T0, co2ppm: c, S0: s0, albedoWarm: alb, pressureBar: pressure,
+    { T0_K: T0, co2ppm: c, S0: s0, surfaceAlbedo: d.surfaceAlbedo,
+      cloudFraction: d.cloudFraction, pressureBar: pressure,
       forcingWm2: mixForcing(c, pressure) }).equilibriumC;
 
   // ── Section 4: CO₂ sensitivity ────────────────────────────────────────────
@@ -1562,8 +1656,11 @@ function plotEBM() {
     ['Can this world keep it?', d.bulkRetained
       ? '✓ Yes — escape velocity is '+d.bulkRatio.toFixed(1)+'× the molecular speed (needs '+JEANS_RETENTION_FACTOR+'×)'
       : '⚠ No — only '+d.bulkRatio.toFixed(1)+'×, and it needs '+JEANS_RETENTION_FACTOR+'×. This atmosphere would escape.'],
-    ['Surface', d.surface.label+' — albedo '+alb.toFixed(2)+', heat storage '+d.surface.mixedLayerM.toFixed(1)+' m'],
-    ['Greenhouse forcing from your mixture', (d.dF >= 0 ? '+' : '')+d.dF.toFixed(1)+' W/m²'],
+    ['Surface', d.surface.label+' — ground albedo '+d.surfaceAlbedo.toFixed(2)+', heat storage '+d.surface.mixedLayerM.toFixed(1)+' m'],
+    ['Cloud cover', (d.cloudFraction*100).toFixed(0)+'% — reflects sunlight AND traps infrared'],
+    ['Planetary albedo (what a telescope sees)', alb.toFixed(3)+' — ground plus cloud deck'],
+    ['Greenhouse forcing from your gases', (d.dF >= 0 ? '+' : '')+d.dF.toFixed(1)+' W/m²'],
+    ['Extra trapping from your clouds', '+'+d.cloudLW.toFixed(1)+' W/m² — counted on top of the gases'],
     MORE,
     ['Escape velocity', (d.retention.escapeVelocityMS/1000).toFixed(1)+' km/s (from '+d.planetMassEarth.toFixed(2)+' M⊕ at '+d.density+' g/cm³)'],
     ['Exosphere temperature assumed', d.retention.exosphereK.toFixed(0)+' K — where escape happens, far above the surface'],
@@ -1631,7 +1728,7 @@ function plotRetention() {
 //  PLOT: SECTION 5A — ROTATING (summer solstice + seasonal Hovmöller)
 // ───────────────────────────────────────────────────────────────────
 function plot5A() {
-  const { co2, obl, diff, pressure } = state;
+  const { co2, obl, pressure } = state;
   const d = derive();
   const S0 = d.S0;
 
@@ -1642,7 +1739,11 @@ function plot5A() {
   // never ended, and the answer runs away.
   const seas = latProfileSeasonal({
     S0, co2ppm: co2, obliquityDeg: obl,
-    albedo: d.albedo, dRel: diff, mixedLayerM: d.surface.mixedLayerM,
+    surfaceAlbedo: d.surfaceAlbedo, cloudFraction: d.cloudFraction,
+    // Transport is derived inside physics.js from exactly these three
+    // things, so the interface passes the inputs rather than the answer.
+    dayHours: state.dayHours, transportFactor: d.surface.transportFactor,
+    mixedLayerM: d.surface.mixedLayerM,
     pressureBar: pressure, forcingWm2: d.dF,
   });
   const lats = seas.lats;
@@ -1741,9 +1842,16 @@ function plot5A() {
     ['Equatorial annual mean', Teq.toFixed(1)+' °C'],
     ['Summer-solstice N-pole / S-pole', TpoleN.toFixed(1)+' / '+TpoleS.toFixed(1)+' °C'],
     ['Largest seasonal swing (any latitude)', swingSeasonal.toFixed(1)+' °C — set by how much heat the surface stores ('+d.surface.label+')'],
-    ['Pole–equator contrast (annual mean)', swingSpatial.toFixed(1)+' °C — this is what your Diffusion D controls'],
+    ['Pole–equator contrast (annual mean)', swingSpatial.toFixed(1)+' °C — set by how much heat the atmosphere moves, which follows from your day length'],
+    ['Day length', fmtDay(state.dayHours)],
     ['Climate zones', bandSummary],
     MORE,
+    ['Heat transport D (derived, not chosen)', seas.dRel.toFixed(3)+' = Earth\u2019s '+CONSTANTS.D_EARTH_REL.toFixed(2)+
+      ' × '+Math.pow(state.dayHours/CONSTANTS.DAY_HOURS_EARTH, CONSTANTS.D_ROTATION_EXPONENT).toFixed(2)+' (day length)'+
+      ' × '+pressure.toFixed(2)+' (pressure) × '+d.surface.transportFactor.toFixed(2)+' (ocean)'],
+    ['Cloud cover', (d.cloudFraction*100).toFixed(0)+'%'+(state.cloudAuto?' — the default for this much surface water':' — set by you')],
+    ['Surface albedo vs planetary albedo', d.surfaceAlbedo.toFixed(2)+' ground, '+d.albedo.toFixed(2)+' with the cloud deck on top'],
+    ['⚠ The rotation exponent is disputed', 'D scales as (day length)² here, following Williams & Kasting 1997. Other groups compared that against 3D circulation models and found it unsupported. The sensitivity of this slider is an open research question, not a settled number.'],
     ['Livable surface fraction', (zones.habitableFraction*100).toFixed(0)+'% — thaws at some point in the year and never cooks'],
     ['Permanent ice line', (iceSouth===null?'Fully frozen':Math.abs(iceSouth).toFixed(0)+'°S') + ' / ' + (iceNorth===null?'Fully frozen':iceNorth.toFixed(0)+'°N')],
     ['High obliquity regime?', obl > 54 ? '⚠ Yes — poles receive more annual sunlight than the equator' : 'No'],
@@ -1760,14 +1868,20 @@ function plot5A() {
 //  PLOT: SECTION 5B — TIDALLY LOCKED (profile + D-sweep)
 // ───────────────────────────────────────────────────────────────────
 function plot5B() {
-  const { co2, diff, pressure } = state;
+  const { co2, pressure } = state;
   const d = derive();
   const S0 = d.S0;
+  // A locked planet's transport is NOT rotation-scaled -- its rotation equals
+  // its orbital period, which would give D in the range 7-25 and a completely
+  // flat, contrast-free world. So the day length slider does not reach this
+  // tab, and the sweep stays a sweep of D itself.
+  const diff = d.lockedD;
   const D_vals = [0.05, 0.2, 0.5, diff].sort((a,b)=>a-b);
   // Deduplicate within 0.005
   const D_dedup = [];
   D_vals.forEach(v => { if (!D_dedup.some(x=>Math.abs(x-v)<0.005)) D_dedup.push(v); });
-  const tl = (D) => tidallyLockedProfile({ S0, co2ppm: co2, albedo: d.albedo,
+  const tl = (D) => tidallyLockedProfile({ S0, co2ppm: co2,
+    surfaceAlbedo: d.surfaceAlbedo, cloudFraction: d.cloudFraction,
     dRel: D, pressureBar: pressure, forcingWm2: d.dF });
 
   const palette = ['#1565C0','#3fb950','#FB8C00','#E53935','#a371f7'];
@@ -1828,7 +1942,8 @@ function plot5B() {
     ['Day–night swing', daynightSwing.toFixed(1)+' °C'],
     MORE,
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
-    ['Diffusion coefficient D', diff.toFixed(2)+' (a '+d.surface.label+' surface sets '+d.surface.dRel.toFixed(2)+' by default)'],
+    ['Heat transport D', diff.toFixed(2)+' — a locked planet is NOT rotation-scaled (its day equals its year), so this comes from the fixed locked value × '+d.surface.transportFactor.toFixed(2)+' for a '+d.surface.label+' surface'],
+    ['Cloud cover', (d.cloudFraction*100).toFixed(0)+'% — ground albedo '+d.surfaceAlbedo.toFixed(2)+', planetary albedo '+d.albedo.toFixed(2)],
     ['Eyeball Earth regime?', diff < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
     ['Climate zones (day side outward from substellar)', tlZones.bands.slice().reverse().map(b => b.label+': '+Math.abs(b.to)+'°–'+Math.abs(b.from)+'°').join(' · ')],
     ['Livable surface fraction (zones)', (tlZones.habitableFraction*100).toFixed(0)+'%'],
@@ -1845,27 +1960,31 @@ function plot5B() {
 //  PLOT: SECTION 6 — FULL SUMMARY (matches notebook Phase 4 audit)
 // ───────────────────────────────────────────────────────────────────
 function plot6() {
-  const { co2, obl, ecc, diff, pressure, age } = state;
+  const { co2, obl, ecc, pressure, age } = state;
   const d = derive();
   const S0 = d.S0;
   const alb = d.albedo;
+  const cloudOpts = { surfaceAlbedo: d.surfaceAlbedo, cloudFraction: d.cloudFraction };
 
   // 0-D transient — computed for the record block only (no longer plotted)
-  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
-  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
+  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, ...cloudOpts, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
+  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, ...cloudOpts, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
 
   // Spatial profile (lat or TL) for summary panel
   let xLabel, xVals, Tvals, xTickvals, xTicktext, spatialClipped, warmSeason, coldSeason, converged;
   if (d.isLocked) {
-    const r = tidallyLockedProfile({ S0, co2ppm:co2, albedo:d.albedo, dRel:diff, pressureBar:pressure, forcingWm2:d.dF });
+    const r = tidallyLockedProfile({ S0, co2ppm:co2, ...cloudOpts,
+      transportFactor:d.surface.transportFactor, pressureBar:pressure, forcingWm2:d.dF });
     xVals = r.angles; Tvals = r.tempsC; spatialClipped = r.outOfRange; converged = r.converged;
     warmSeason = Tvals; coldSeason = Tvals;   // no seasons when locked
     xLabel   = 'Position (° from terminator)';
     xTickvals = [-90,-45,0,45,90];
     xTicktext = ['Anti-stellar','','Terminator','','Sub-stellar'];
   } else {
-    const seas = latProfileSeasonal({ S0, co2ppm:co2, obliquityDeg:obl, albedo:d.albedo,
-                                      dRel:diff, mixedLayerM:d.surface.mixedLayerM,
+    const seas = latProfileSeasonal({ S0, co2ppm:co2, obliquityDeg:obl, ...cloudOpts,
+                                      dayHours:state.dayHours,
+                                      transportFactor:d.surface.transportFactor,
+                                      mixedLayerM:d.surface.mixedLayerM,
                                       pressureBar:pressure, forcingWm2:d.dF });
     const ext = seasonalExtremes(seas);
     xVals = seas.lats; Tvals = seas.annualMeanC; spatialClipped = seas.outOfRange; converged = seas.converged;
@@ -2098,8 +2217,10 @@ let _earthBaseline = null;
 function earthBaseline() {
   if (_earthBaseline) return _earthBaseline;
   const S0 = effectiveS0(1.0, 1.0);
+  // Earth at 24 hours and 1 bar, with its own cloud deck. Transport is
+  // derived from those, so there is no default D to quote any more.
   const seas = latProfileSeasonal({ S0, co2ppm: 400, obliquityDeg: 23.4,
-    planetType: 'earth', dRel: PLANET_TYPES.earth.defaultD, pressureBar: 1.0 });
+    planetType: 'earth', dayHours: 24, pressureBar: 1.0 });
   _earthBaseline = { S0, spread: Math.max(...seas.annualMeanC) - Math.min(...seas.annualMeanC) };
   return _earthBaseline;
 }
@@ -2414,10 +2535,19 @@ function syncPlanetControls() {
   document.getElementById('sl-pmass').value = Math.log10(state.pmass);
   document.getElementById('sl-pdens').value = state.pdensity;
   document.getElementById('sl-water').value = state.water;
-  // Heat transport follows the water inventory, which is what actually ties
-  // "ocean versus desert" to smaller or bigger swings. Still overridable.
-  state.diff = surfaceProperties(state.water).dRel;
-  document.getElementById('sl-diff').value = state.diff;
+  document.getElementById('sl-day').value = Math.log10(state.dayHours);
+  // Cloud cover follows the water inventory unless a student has taken it
+  // over: water on the ground is where water in the air comes from.
+  syncCloudFromWater();
+}
+
+// The cloud slider tracks the water slider while cloudAuto holds. Moving the
+// cloud slider clears cloudAuto; moving the water slider sets it again, which
+// is the only way back to the derived default without a reset button.
+function syncCloudFromWater() {
+  if (!state.cloudAuto) return;
+  state.cloud = surfaceProperties(state.water).cloudFraction;
+  document.getElementById('sl-cloud').value = state.cloud;
 }
 
 document.getElementById('sl-pmass').addEventListener('input', e => {
@@ -2432,8 +2562,16 @@ document.getElementById('sl-pdens').addEventListener('input', e => {
 });
 document.getElementById('sl-water').addEventListener('input', e => {
   state.water = +e.target.value;
-  state.diff = surfaceProperties(state.water).dRel;
-  document.getElementById('sl-diff').value = state.diff;
+  // Re-attach the cloud deck to the water inventory. A student who has
+  // deliberately set a cloud cover gets it back by moving this slider.
+  state.cloudAuto = true;
+  syncCloudFromWater();
+  document.getElementById('sel-planet').value = '';
+  renderActive();
+});
+document.getElementById('sl-cloud').addEventListener('input', e => {
+  state.cloud = +e.target.value;
+  state.cloudAuto = false;
   document.getElementById('sel-planet').value = '';
   renderActive();
 });
@@ -2449,8 +2587,12 @@ document.getElementById('sl-obl').addEventListener('input', e => {
 document.getElementById('sl-ch4').addEventListener('input', e => {
   state.ch4 = readLogSlider(e.target); renderActive();
 });
-document.getElementById('sl-diff').addEventListener('input', e => {
-  state.diff = +e.target.value; renderActive();
+document.getElementById('sl-day').addEventListener('input', e => {
+  // Log slider: 6 h to 100 h. Snapped to a tenth of an hour so the readout
+  // and the record block agree with each other.
+  state.dayHours = Math.round(Math.pow(10, +e.target.value) * 10) / 10;
+  document.getElementById('sel-planet').value = '';
+  renderActive();
 });
 
 // ───────────────────────────────────────────────────────────────────

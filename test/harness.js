@@ -69,6 +69,52 @@ const derived = {
     return derived.climateBandCount(a) - derived.climateBandCount(b);
   },
 
+  /** Planetary albedo of a surface under a cloud deck. */
+  cloudPlanetaryAlbedo(surfaceAlbedo, cloudFraction) {
+    return P.cloudyAlbedos(surfaceAlbedo, cloudFraction).planetary;
+  },
+
+  /** Shortwave cloud radiative effect, W/m^2. Negative means cooling. */
+  cloudShortwaveEffect(surfaceAlbedo, cloudFraction) {
+    const clear = P.cloudyAlbedos(surfaceAlbedo, 0).planetary;
+    const cloudy = P.cloudyAlbedos(surfaceAlbedo, cloudFraction).planetary;
+    return -(cloudy - clear) * P.CONSTANTS.S0_SUN / 4;
+  },
+
+  /** Net cloud radiative effect, shortwave plus longwave. */
+  cloudNetEffect(surfaceAlbedo, cloudFraction) {
+    return derived.cloudShortwaveEffect(surfaceAlbedo, cloudFraction)
+      + P.cloudLongwave(cloudFraction);
+  },
+
+  /** Ice-albedo swing with clouds, as a fraction of the swing without. */
+  iceAlbedoSwingRatio(surfaceAlbedo, cloudFraction) {
+    const withC = P.cloudyAlbedos(surfaceAlbedo, cloudFraction);
+    const without = P.cloudyAlbedos(surfaceAlbedo, 0);
+    return (withC.ice - withC.base) / (without.ice - without.base);
+  },
+
+  /** Do a warm start and a frozen start reach different equilibria? */
+  bistableAt(S0) {
+    const warm = P.run0dEBM({ T0_K: 288, S0 }).equilibriumCRaw;
+    const cold = P.run0dEBM({ T0_K: 215, S0 }).equilibriumCRaw;
+    return Math.abs(warm - cold) > 5;
+  },
+
+  /** Pole-to-equator contrast for a Venus-like 92-bar atmosphere. */
+  venusContrast() {
+    const s = P.latProfileSeasonal({
+      S0: P.effectiveS0(1.0, 0.723), pressureBar: 92, co2ppm: 400, dayHours: 24,
+    });
+    return s.annualMeanC[45] - s.annualMeanC[90];
+  },
+
+  /** Substellar minus antistellar temperature for a locked Proxima b. */
+  lockedDayNightContrast() {
+    const r = P.tidallyLockedProfile({ S0: P.effectiveS0(0.122, 0.0485) });
+    return r.tempsCRaw[r.tempsCRaw.length - 1] - r.tempsCRaw[0];
+  },
+
   keplerPeriod(aAU, starMass) {
     return P.kepler.period(aAU, starMass);
   },
