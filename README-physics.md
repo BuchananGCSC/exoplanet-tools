@@ -23,6 +23,8 @@ validation/validation.ipynb  JupyterLite validation notebook
 Run the tests with `node --test` from the repository root. No
 dependencies, Node 18 or newer.
 
+![tests](https://github.com/BuchananGCSC/exoplanet-tools/actions/workflows/tests.yml/badge.svg)
+
 ## Bugs this fixes
 
 **The ice-albedo iteration returned non-converged answers.** The old
