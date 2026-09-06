@@ -13,9 +13,10 @@ ADS from the title alone.
 
 **Reading order.** If you want a single path through it, read §1 for the
 energy balance framework, §2 for what makes it one-dimensional, §3 for
-where the boundaries come from, then dip into §4 through §7 as questions
-come up. The two starred items are the ones that would change how you
-teach this if you only read two.
+where the boundaries come from, then dip into §4 through §8 as questions
+come up. §7 is new and is where planet mass finally earns its keep. The
+starred items are the ones that would change how you teach this if you
+only read a few.
 
 ---
 
@@ -174,82 +175,6 @@ as permanent.
 
 ---
 
-## 5b. Clouds
-
-The model now represents clouds explicitly, with a shortwave term that cools
-and a longwave term that warms. These are the sources behind those numbers.
-
-**Loeb et al., "Toward optimal closure of the Earth's top-of-atmosphere
-radiation budget," *J. Climate* 22, 748 (2009), and the CERES EBAF data
-product documentation.**
-Where the cloud radiative effect numbers come from: about −47 W/m²
-shortwave, +26 W/m² longwave, net −20 W/m² globally. `ALPHA_CLOUD` is solved
-from Earth's planetary albedo and `LW_CLOUD` is set by the longwave figure,
-so these are the observations the cloud terms are pinned to. The CERES data
-is public and browsable, which makes it usable in class directly.
-*Justifies:* `ALPHA_CLOUD`, `LW_CLOUD`, and the three contract cases in the
-`clouds` group.
-
-**Yang, Cowan & Abbot 2013** — already on your list, and now more directly
-relevant. The stabilising feedback in that paper is substellar cloud
-formation. The model can now represent clouds but not their response to
-temperature, so it captures half of what that paper is about. Reading it
-alongside the notebook's cloud section makes clear what is still missing.
-
-**Ramirez, "A New 2D Energy Balance Model for Simulating the Climates of
-Rapidly and Slowly Rotating Terrestrial Planets," *Planet. Sci. J.* 5, 2
-(2024).**
-Contains a cloud parameterization in which cover responds to temperature —
-roughly 50% for Earth at 288 K, rising when warmer. This is the next piece
-of physics for the simulator, and the paper is the place to get it right. A
-first attempt at it worked on the hot side and failed on the cold side; see
-the notebook for why.
-*Justifies:* nothing yet. This is the roadmap.
-
----
-
-## 5c. Heat transport as a derived quantity
-
-`D` is no longer a slider. It comes from day length, atmospheric pressure,
-and planet type.
-
-**★ Williams & Kasting, "Habitable planets with high obliquities," *Icarus*
-129, 254 (1997).**
-The paper that makes D a function of rotation rate, pressure, mean
-molecular mass, and atmospheric heat capacity instead of a fitted constant.
-This is the single source behind the day-length slider. It is also, usefully,
-an obliquity paper, so it does double duty with §5.
-*Justifies:* `diffusionFrom`, `D_EARTH_REL`, `D_ROTATION_EXPONENT`.
-
-**Farrell, "Equatorial superrotation and the transport of angular momentum
-in atmospheres of the outer planets," and the rotation-scaling argument it
-supplies (1990).**
-Where the Ω⁻² dependence originates: faster rotation means stronger Coriolis
-deflection, narrower circulation cells, and less poleward transport. Read
-this for the mechanism rather than the formula.
-
-**Vladilo et al., "Modeling the surface temperature of Earth-like planets,"
-*Astrophys. J.* 804, 50 (2015).**
-**Read this one immediately after Williams & Kasting.** Vladilo's group
-compared the Ω⁻² dependence against 3D global circulation models and found
-it unsupported, preferring a weaker dependence, with agreement good at high
-rotation rates and poor at low ones. The simulator uses the exponent your
-students can move; this is the paper that says the value is arguable.
-*Justifies:* the comment attached to `D_ROTATION_EXPONENT`, and the honest
-answer when a student asks how confident we are.
-
-**Haqq-Misra et al., "An Energy Balance Model for Rapidly and Synchronously
-Rotating Terrestrial Planets," *Planet. Sci. J.* 3, 32 (2022).**
-Describes HEXTOR, a direct descendant of the Williams & Kasting model, and
-reports the specific failure that shaped this simulator's design: applying
-the rotation dependence inside a tidally locked EBM gives very large D and
-completely flat temperature profiles. That is why Tab 6 keeps a bounded
-default instead of deriving transport from the orbital period.
-*Justifies:* `D_LOCKED_DEFAULT`, and the deliberate inconsistency between
-Tabs 5 and 6.
-
----
-
 ## 6. Stars
 
 **Eker et al., "Interrelated main-sequence mass-luminosity, mass-radius,
@@ -276,39 +201,130 @@ reference.
 
 ---
 
-## 7. Where the model is knowingly wrong
+## 7. Atmospheres: what a planet can keep, and what warms it
 
-Not further reading so much as a list of things to be able to say out loud
-when a student pushes on the tool. Each has an entry above that explains it
-properly.
+This section is new, and it exists because planet mass used to have almost
+no consequences in the code. Escape velocity is what connects a planet's
+mass to the air above it, and it is the piece that lets "small, therefore
+dry" follow from something rather than be asserted.
 
-- **Clouds do not respond to temperature.** They are represented, with both
-  their cooling and warming effects, but the cover is fixed per planet type.
-  A warming planet should grow more cloud, which reflects more sunlight;
-  that stabilising feedback is missing, and it is the largest remaining gap.
-- **The rotation exponent is disputed.** Williams & Kasting use 2 and this
-  model follows them. Vladilo's comparison against 3D models says that is
-  too strong. Students are moving a slider whose sensitivity is an open
-  research question, which is worth telling them.
-- **Very slow rotators develop day-night swings the model cannot see.**
-  Everything here is daily-averaged. Beyond about a hundred hours, that
-  assumption stops holding.
-- **Ice albedo is a single number**, independent of stellar spectrum. Ice is
-  much darker under an M dwarf.
-- **The linearised OLR has no runaway greenhouse.** The guard rails at −100
-  and +150 °C exist because the equations keep producing numbers after the
-  physics has stopped applying.
-- **The pressure and CO₂ terms double-count.** More total pressure at fixed
-  ppm means more CO₂, so part of the pressure forcing is the CO₂ forcing
-  again. Kept separate because varying them independently is pedagogically
-  useful, not because it is right.
+**★ Catling & Kasting, *Atmospheric Evolution on Inhabited and Lifeless
+Worlds*, Cambridge, 2017.**
+The book to own for this whole section. Chapter 5 is thermal escape done
+properly, including where the Jeans picture stops working. If you read one
+thing here, read this — it is the atmospheric counterpart to Pierrehumbert
+in §1, and between them they justify most of the model.
+*Justifies:* `gasRetention`, `JEANS_RETENTION_FACTOR`, the whole §3.5.
+
+**Jeans, *The Dynamical Theory of Gases*, Cambridge, 1916.**
+The original: molecules in the tail of the Maxwell–Boltzmann distribution
+exceed escape velocity and leave, so an atmosphere is always evaporating,
+just usually slowly. Worth showing students that the mechanism is
+statistical rather than a threshold — nothing "switches on."
+*Justifies:* the form of the retention test.
+
+**Chamberlain & Hunten, *Theory of Planetary Atmospheres*, Academic Press,
+2nd ed., 1987.**
+Where the exobase, the escape parameter and the factor-of-six style rule
+of thumb are set out carefully. Also the source of the honest caveat: the
+temperature that matters is the exosphere's, not the surface's, and they
+differ by a factor of three or four for Earth.
+*Justifies:* `T_EXO_EARTH_K`, `exosphereTemperature`.
+
+**Hunten, "Thermal and nonthermal escape mechanisms for terrestrial
+bodies," *Planetary and Space Science* 30, 773 (1982).**
+The catalogue of everything the model leaves out — sputtering, pickup
+ions, photochemical escape, impact erosion. Read it to know how much the
+thermal answer is missing, which for Mars is most of the story.
+*Justifies:* the non-thermal caveat the interface prints whenever the
+magnetic field comes out weak or absent.
+
+**★ Zahnle & Catling, "The Cosmic Shoreline: The Evidence that Escape
+Determines which Planets Have Atmospheres, and what this May Mean for
+Proxima Centauri b," *Astrophysical Journal* 843, 122 (2017).**
+Plots escape velocity against lifetime stellar XUV for every solar system
+body and every measured exoplanet, and finds a startlingly clean dividing
+line. This is the modern, empirical version of the diagram in §8 of the
+validation notebook, and it is where the M-dwarf problem becomes concrete:
+planets around active M dwarfs sit on the wrong side of the shoreline.
+*Justifies:* the warning that this model is optimistic around flare stars,
+since it scales exosphere temperature with bolometric flux rather than XUV.
+
+**Jakosky et al., "Mars' atmospheric history derived from upper-atmosphere
+measurements of ³⁸Ar/³⁶Ar," *Science* 355, 1408 (2017).**
+The MAVEN isotope result: most of Mars's atmosphere was lost to space,
+not buried. The reason the tool says, whenever a world's field comes out
+weak, that Mars kept CO₂ thermally and lost it anyway.
+
+**Wordsworth & Pierrehumbert, "Hydrogen-nitrogen greenhouse warming in
+Earth's early atmosphere," *Science* 339, 64 (2013).**
+Collision-induced absorption: hydrogen has no dipole, but two colliding
+molecules briefly do, and in a thick H₂ atmosphere that is a serious
+greenhouse effect. The model does not include it, which is why a
+hydrogen-rich world comes out too cold and now says so.
+
+**Byrne & Goldblatt, "Radiative forcing at high concentrations of
+well-mixed greenhouse gases," *Geophysical Research Letters* 41, 152
+(2014).**
+Extends the Myhre fits well past the range the sliders can reach. The
+place to go if you ever want the CO₂ term to stay honest at Venus-like
+partial pressures, or to know how badly the methane square root
+misbehaves when extrapolated.
+*Justifies:* the "beyond the fitted range" flag on methane.
+
+**On why there is no oxygen term.** Nothing new is needed here — it is in
+Pierrehumbert chapter 4 — but it is the question students ask most, so it
+is worth having the answer ready. Nitrogen and oxygen are homonuclear
+diatomics: two identical atoms, perfectly symmetric, no dipole moment, so
+their one vibrational mode does not couple to infrared. They cannot absorb
+the radiation a planet is trying to emit, and no amount of either warms
+it. CO₂ and methane can flex into asymmetric shapes and water is bent
+already, so those three absorb. An oxygen slider in the forcing would not
+be a simplification, it would be wrong; oxygen's real effect is ozone,
+and therefore ultraviolet shielding.
+
+---
+
+## 8. Where the model is knowingly wrong
+
+Not further reading so much as a list of things to be able to say out
+loud when a student pushes on the tool. Each has an entry above that
+explains it properly.
+
+- **No clouds.** The single largest omission. Clouds are the dominant
+  uncertainty in real habitability modelling, and their stabilising
+  effect is the entire point of the Yang paper on your list.
+- **No rotation rate.** Meridional heat transport depends strongly on
+  rotation, and `D_rel` is a free slider with no connection to it.
+- **Ice albedo is a single number.** It should depend on stellar spectrum;
+  ice is much darker under an M dwarf.
+- **The linearised OLR has no runaway greenhouse.** The guard rails at
+  −100 and +150 °C exist because the equations keep producing numbers
+  after the physics has stopped applying. The real behaviour past the
+  inner edge is a runaway, and the model cannot represent it.
+- **The pressure and CO₂ terms used to double-count.** `greenhouseForcing`
+  still does: more total pressure at fixed ppm means more CO₂, so part of
+  its pressure term is the CO₂ term again. `greenhouseForcingMix`, which
+  is what the app now calls, does not — CO₂ enters as a partial pressure
+  and the broadening term is deliberately not added on top. The old
+  function is kept only so the test contract still has something to pin.
+- **No non-thermal escape.** The model computes molecules leaking away
+  because they are hot. It does not compute the solar wind stripping an
+  unprotected atmosphere, which is how Mars actually lost one it could
+  hold thermally. The interface says so; the model cannot.
+- **No photochemistry.** Ozone shielding is a threshold on oxygen
+  abundance, not a calculation. There is no ozone in the radiative scheme
+  and no ultraviolet in the energy budget.
+- **Hydrogen's greenhouse effect is missing.** Collision-induced
+  absorption is real and strong in thick H₂ atmospheres (see §7), so
+  hydrogen-rich worlds come out colder here than they should.
+- **Methane past ~100 ppm is extrapolation.** The square-root fit is
+  anchored near 1.7 ppm. The model flags it rather than clipping it,
+  because a student pushing that slider should be told the curve has left
+  its evidence behind.
 - **Tidal locking is binary.** Real planets can settle into higher-order
   spin-orbit resonances; Mercury is in a 3:2, not a 1:1.
-- **No continents, oceans, or topography** — only latitude. The
-  `transportFactor` per planet type is a crude stand-in for ocean
-  circulation, chosen rather than measured. The model never produces an
-  Antarctica.
 
-That last list is worth handing to students directly. A model that says what
-it cannot do is a better object lesson than one that appears to know
+That last list is worth handing to students directly. A model that says
+what it cannot do is a better object lesson than one that appears to know
 everything.
