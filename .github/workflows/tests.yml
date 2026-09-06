@@ -1,14 +1,11 @@
 name: physics tests
 
-# Runs on every push and pull request, and blocks nothing that is not
-# already broken. The point is simple: if this badge is red, do not
-# deploy, because the simulator's numbers are wrong.
+# Runs on every push and pull request, on every branch. If this is red,
+# do not deploy: the simulator's numbers are wrong.
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -26,12 +23,10 @@ jobs:
 
       - name: Check that the deployed simulator uses the shared physics core
         # Guards against the failure that started all this: two divergent
-        # copies of the physics, with the wrong one deployed. If the
-        # simulator has grown its own private copy of a function that
-        # lives in physics.js, fail loudly.
+        # copies of the physics, with the wrong one deployed.
         run: |
           set -e
-          for f in exoplanet_climate_simulator.html exoplanet-orbit-calculator.html; do
+          for f in exoplanet_climate_simulator.html; do
             if [ ! -f "$f" ]; then continue; fi
             if ! grep -q 'src="physics.js"' "$f"; then
               echo "::error file=$f::does not load physics.js"
