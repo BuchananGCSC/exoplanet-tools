@@ -42,7 +42,12 @@
     // --- Linearised outgoing longwave radiation: OLR = A + B*T(degC) ---
     // [FIT] Budyko/Sellers-type fit. Valid only near Earth-like
     // temperatures; see MODEL_RANGE below.
-    A_OLR: 210.0,          // W/m^2
+    //
+    // A_OLR CHANGED from 210.0 when clouds became explicit. The old value
+    // was tuned to an atmosphere with Earth's cloud deck already baked into
+    // it. Now that cloud longwave trapping is a separate term, the
+    // clear-sky part has to be correspondingly larger.
+    A_OLR: 236.3,          // W/m^2
     B_OLR: 2.0,            // W/m^2/K
 
     // --- Greenhouse forcing ---
@@ -52,9 +57,23 @@
     P_REF: 1.0,            // bar
 
     // --- Albedo ---
-    ALPHA_ICE: 0.62,       // [CHOICE] bright ice/snow
+    ALPHA_ICE: 0.62,       // [CHOICE] bright ice/snow, a SURFACE property
     ICE_T_CENTER: -10.0,   // degC, midpoint of the ice transition
     ICE_T_WIDTH: 3.0,      // [CHOICE] degC, half-width of the smooth ramp
+
+    // --- Clouds ---
+    // Clouds do two opposing things and the model now says so. ALPHA_CLOUD
+    // is solved from Earth's observed planetary albedo of 0.30 at 67% cloud
+    // cover over a clear-sky albedo of 0.15. LW_CLOUD is set so the
+    // longwave effect matches the CERES value at that cover.
+    //
+    // Check against observations, at f = 0.67:
+    //   shortwave effect  -51 W/m^2   (CERES: about -47)
+    //   longwave effect   +26 W/m^2   (CERES: about +26)
+    //   net               -25 W/m^2   (CERES: about -20)
+    //   planetary albedo   0.300      (observed 0.30)
+    ALPHA_CLOUD: 0.374,    // effective albedo of a fully cloudy sky
+    LW_CLOUD: 39.0,        // W/m^2 of extra IR trapping at full cover
 
     // --- Heat capacity ---
     RHO_WATER: 1025.0,     // kg/m^3
@@ -62,9 +81,29 @@
     MIXED_LAYER_M: 70.0,   // [CHOICE] default ocean mixed-layer depth
 
     // --- Meridional heat transport ---
-    // D_rel is the dimensionless slider value the student sees.
     // D_phys = D_rel * D_SCALE, in W/m^2/K.
-    D_SCALE: 2.86,         // [FIT] D_rel = 0.35 reproduces Earth's pole-equator contrast
+    D_SCALE: 2.86,
+    // D_rel is no longer a free parameter. It is derived from day length,
+    // atmospheric pressure, and planet type; see diffusionFrom().
+    D_EARTH_REL: 0.20,     // [FIT] Earth at 24 h, 1 bar
+    DAY_HOURS_EARTH: 24.0,
+    // Rotation exponent. Williams & Kasting 1997 use 2, following Farrell
+    // 1990: faster spin means stronger Coriolis deflection, narrower
+    // circulation cells, and less poleward transport.
+    //
+    // THIS VALUE IS DISPUTED. Vladilo et al. compared against 3D
+    // circulation models and found the n = 2 dependence unsupported,
+    // preferring something weaker, with agreement good at high rotation
+    // rates and poor at low ones. Ramirez 2024 abandoned the analytic form
+    // entirely and fitted coefficients to GCM runs. We keep 2 because it is
+    // the value with a citation attached; changing it is a one-character
+    // edit and the test suite will tell you what moved.
+    D_ROTATION_EXPONENT: 2.0,
+    // Transport used for tidally locked planets. NOT rotation-scaled:
+    // a locked planet's rotation equals its orbital period, which gives
+    // D values around 7-25 and a completely flat temperature profile.
+    // Haqq-Misra et al. report exactly this failure and advise against it.
+    D_LOCKED_DEFAULT: 0.20,
 
     // --- Tidal locking ---
     TIDAL_REF_AGE_GYR: 4.5,   // age the base constant is calibrated to
@@ -293,22 +332,96 @@
   // erases the seasons entirely. A dry world stores almost no heat and
   // swings hard; a waterworld barely swings at all. This is the knob
   // that makes "Desert World" mean something for seasonality.
+  // A planet type is now four independent physical properties rather than
+  // one tuned albedo. surfaceAlbedo is the GROUND, not the planet: the
+  // cloud deck is added on top by cloudyAlbedos().
+  //
+  // mixedLayerM is an EFFECTIVE depth, not a literal one. It sets the
+  // thermal relaxation time and therefore the size of the seasonal swing.
+  // Earth's 8 m is chosen so the amplitude comes out right for a mixed
+  // land-and-ocean planet; a literal 70 m ocean mixed layer gives a
+  // relaxation time of about 4.5 years and erases the seasons entirely.
+  //
+  // transportFactor stands in for ocean circulation. The Williams & Kasting
+  // scaling is atmospheric only, so without this a waterworld and an
+  // Earth-like planet would move heat identically, which they do not.
+  //
+  // massEarth is a REPRESENTATIVE mass, used only where the interface
+  // offers no mass control of its own (currently the dynamo estimate). It
+  // is here rather than in a private lookup table so that any code relying
+  // on it has to name it, and so the interface can tell the student what
+  // mass it assumed.
   const PLANET_TYPES = {
-    // On defaultD: the old file set 0.20 for Earth while the comment
-    // beside it said 0.35 reproduces Earth's pole-equator contrast. They
-    // cannot both be right. Re-tuning against the seasonal model settles
-    // it in favour of the default: D_rel = 0.20 reproduces Earth's 14 degC
-    // global mean and a 24 degC equator. The comment was the stale half.
-    // massEarth is a REPRESENTATIVE mass, used only where the interface
-    // offers no mass control of its own (currently the dynamo estimate).
-    // It is here rather than in a private lookup table so that any code
-    // relying on it has to name it, and so the interface can tell the
-    // student what mass it assumed. The old version hid this, which meant
-    // picking "Desert World" silently guaranteed no magnetic field.
-    earth:  { label: 'Earth-like',        albedo: 0.30, defaultD: 0.20, mixedLayerM: 8,  massEarth: 1.0 },
-    desert: { label: 'Desert World',      albedo: 0.35, defaultD: 0.08, mixedLayerM: 2,  massEarth: 0.3 },
-    ocean:  { label: 'Ocean Super-Earth', albedo: 0.25, defaultD: 0.40, mixedLayerM: 40, massEarth: 3.0 },
+    earth: {
+      label: 'Earth-like',
+      surfaceAlbedo: 0.15, cloudFraction: 0.67,
+      transportFactor: 1.0, mixedLayerM: 8, massEarth: 1.0,
+    },
+    desert: {
+      // Little water means little cloud greenhouse, so a dry world runs
+      // cold; little heat storage means violent seasons; no ocean means a
+      // steep pole-to-equator gradient. It is harsh but not hopeless --
+      // raising CO2 to a few thousand ppm brings it back above freezing,
+      // which is a chain a student can find and act on.
+      label: 'Desert World',
+      surfaceAlbedo: 0.28, cloudFraction: 0.30,
+      transportFactor: 0.6, mixedLayerM: 2, massEarth: 0.3,
+    },
+    ocean: {
+      label: 'Ocean Super-Earth',
+      surfaceAlbedo: 0.09, cloudFraction: 0.80,
+      transportFactor: 1.6, mixedLayerM: 40, massEarth: 3.0,
+    },
   };
+
+  /**
+   * Effective ice and clear-surface albedos once a cloud deck of fraction
+   * fc is laid over them.
+   *
+   *   alpha = (1-fc) * [ice*ALPHA_ICE + (1-ice)*surfaceAlbedo] + fc*ALPHA_CLOUD
+   *
+   * which rearranges into the same two-term form the solvers already use,
+   * with these transformed constants. That is why nothing downstream had to
+   * change shape.
+   *
+   * Note what this does to the ice-albedo feedback: ice now acts on the
+   * SURFACE and the cloud deck masks part of it. Earth's ice-free to
+   * fully-glaciated albedo swing falls from 0.320 to 0.155.
+   */
+  function cloudyAlbedos(surfaceAlbedo, cloudFraction) {
+    const fc = Math.max(0, Math.min(1, cloudFraction));
+    return {
+      ice: (1 - fc) * C.ALPHA_ICE + fc * C.ALPHA_CLOUD,
+      base: (1 - fc) * surfaceAlbedo + fc * C.ALPHA_CLOUD,
+      planetary: (1 - fc) * surfaceAlbedo + fc * C.ALPHA_CLOUD,
+    };
+  }
+
+  /** Extra longwave trapping from a cloud deck, in W/m^2. */
+  function cloudLongwave(cloudFraction) {
+    return Math.max(0, Math.min(1, cloudFraction)) * C.LW_CLOUD;
+  }
+
+  /**
+   * Meridional heat transport, derived rather than chosen.
+   *
+   *   D = D_earth * (P/P0) * (day/24 h)^n * transportFactor
+   *
+   * Following Williams & Kasting 1997, who make D a function of rotation
+   * rate, pressure, mean molecular mass, and atmospheric heat capacity.
+   * This tool has no composition control, so mass and heat capacity drop
+   * out and pressure and rotation remain.
+   *
+   * @param dayHours       length of the planet's day
+   * @param pressureBar    total surface pressure
+   * @param transportFactor  ocean-circulation stand-in, 1.0 for Earth-like
+   */
+  function diffusionFrom(dayHours, pressureBar = 1.0, transportFactor = 1.0) {
+    const day = Math.max(dayHours, 0.1);
+    return C.D_EARTH_REL * Math.max(pressureBar, 0.01)
+      * Math.pow(day / C.DAY_HOURS_EARTH, C.D_ROTATION_EXPONENT)
+      * transportFactor;
+  }
 
   /* ===================================================================
    * SECTION 5 — INSOLATION GEOMETRY
@@ -373,21 +486,23 @@
    */
   function run0dEBM(opts) {
     const {
-      T0_K = 288, co2ppm = 280, S0 = C.S0_SUN, albedoWarm = 0.30,
+      T0_K = 288, co2ppm = 280, S0 = C.S0_SUN,
+      surfaceAlbedo = 0.15, cloudFraction = 0.67,
       pressureBar = 1.0, years = 300, dtYears = 0.5,
       mixedLayerM = C.MIXED_LAYER_M,
     } = opts;
+    const cl = cloudyAlbedos(surfaceAlbedo, cloudFraction);
 
     const heatCapacity = C.RHO_WATER * C.CP_WATER * mixedLayerM;
     const dt = dtYears * C.SEC_PER_YEAR;
     const steps = Math.floor(years / dtYears);
-    const dF = greenhouseForcing(co2ppm, pressureBar);
+    const dF = greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(cloudFraction);
 
     let T = T0_K;
     const times = [0], raw = [T];
     for (let i = 0; i < steps; i++) {
       const f = iceFraction(T - 273.15);
-      const alb = f * C.ALPHA_ICE + (1 - f) * albedoWarm;
+      const alb = f * cl.ice + (1 - f) * cl.base;
       const asr = S0 * (1 - alb) / 4;
       const olr = C.A_OLR + C.B_OLR * (T - 273.15);
       T += dt * (asr - olr + dF) / heatCapacity;
@@ -471,7 +586,8 @@
    * maxIter, and report whether it actually converged.
    */
   function solveWithAlbedoFeedback(coords, Q, dRel, baseAlbedo, dF, opts = {}) {
-    const { tolerance = 1e-4, maxIter = 200, relaxation = 0.5, dayMask = null } = opts;
+    const { tolerance = 1e-4, maxIter = 200, relaxation = 0.5, dayMask = null,
+            iceAlbedo = C.ALPHA_ICE } = opts;
     const N = coords.length;
     const { lo, di, up } = diffusionOperator(coords, dRel, C.B_OLR);
 
@@ -484,7 +600,7 @@
         // On a tidally locked night side there is no sunlight, so the
         // surface albedo there is irrelevant to the energy budget.
         const f = dayMask && !dayMask[i] ? 0 : frac[i];
-        const alpha = f * C.ALPHA_ICE + (1 - f) * baseAlbedo;
+        const alpha = f * iceAlbedo + (1 - f) * baseAlbedo;
         return q * (1 - alpha) + dF - C.A_OLR;
       });
       T = tridiagSolve(lo, di, up, rhs);
@@ -518,13 +634,17 @@
     const {
       S0 = C.S0_SUN, co2ppm = 280, obliquityDeg = 23.44, planetType = 'earth',
       dRel = null, pressureBar = 1.0, declinationDeg = null,
+      dayHours = C.DAY_HOURS_EARTH,
     } = opts;
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    const D = dRel === null ? type.defaultD : dRel;
+    const D = dRel === null ? diffusionFrom(dayHours, pressureBar, type.transportFactor) : dRel;
     const decl = declinationDeg === null ? obliquityDeg : declinationDeg;
     const lats = latitudeGrid();
+    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
     const Q = lats.map((lat) => dailyMeanInsolation(S0, decl, lat));
-    const out = solveWithAlbedoFeedback(lats, Q, D, type.albedo, greenhouseForcing(co2ppm, pressureBar));
+    const out = solveWithAlbedoFeedback(lats, Q, D, cl.base,
+      greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction),
+      { iceAlbedo: cl.ice });
     out.lats = lats;
     out.declinationDeg = decl;
     out.interpretation =
@@ -552,14 +672,16 @@
   function latProfileSeasonal(opts) {
     const {
       S0 = C.S0_SUN, co2ppm = 280, obliquityDeg = 23.44, planetType = 'earth',
-      dRel = null, pressureBar = 1.0, stepsPerYear = 24, spinUpYears = 200,
+      dRel = null, pressureBar = 1.0, dayHours = C.DAY_HOURS_EARTH,
+      stepsPerYear = 24, spinUpYears = 200,
       tolerance = 0.02, mixedLayerM = null,
     } = opts;
 
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    const D = dRel === null ? type.defaultD : dRel;
+    const D = dRel === null ? diffusionFrom(dayHours, pressureBar, type.transportFactor) : dRel;
     const depth = mixedLayerM === null ? type.mixedLayerM : mixedLayerM;
-    const dF = greenhouseForcing(co2ppm, pressureBar);
+    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
+    const dF = greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction);
 
     const lats = latitudeGrid();
     const N = lats.length;
@@ -605,7 +727,7 @@
         const Q = Qyear[s];
         const rhs = Q.map((q, i) => {
           const f = iceFraction(Tbar[i]);
-          const alpha = f * C.ALPHA_ICE + (1 - f) * type.albedo;
+          const alpha = f * cl.ice + (1 - f) * cl.base;
           return q * (1 - alpha) + dF - C.A_OLR + inertia * T[i];
         });
         T = tridiagSolve(lo, di, up, rhs);
@@ -680,14 +802,18 @@
       dRel = null, pressureBar = 1.0,
     } = opts;
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    const D = dRel === null ? type.defaultD : dRel;
+    // Deliberately NOT rotation-scaled: see D_LOCKED_DEFAULT.
+    const D = dRel === null ? C.D_LOCKED_DEFAULT * type.transportFactor : dRel;
+    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
 
     const angles = latitudeGrid();
     const Q = angles.map((a) => (a > 0 ? S0 * Math.sin(a * DEG) : 0));
     const dayMask = angles.map((a) => a > 0);
 
     const out = solveWithAlbedoFeedback(
-      angles, Q, D, type.albedo, greenhouseForcing(co2ppm, pressureBar), { dayMask });
+      angles, Q, D, cl.base,
+      greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction),
+      { dayMask, iceAlbedo: cl.ice });
 
     out.angles = angles;
     out.substellarC = out.tempsC[out.tempsC.length - 1];
@@ -828,6 +954,7 @@
     effectiveS0, tidalLockRadius, isTidallyLocked, magneticFieldEstimate,
     // forcing
     pressureForcing, greenhouseForcing, atmosphereThicknessLabel, iceFraction,
+    cloudyAlbedos, cloudLongwave, diffusionFrom,
     // geometry
     dailyMeanInsolation, solsticeInsolation, monthlyDeclination,
     // solvers

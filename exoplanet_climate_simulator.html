@@ -356,15 +356,15 @@
     </div>
 
     <div id="sidebar-heattransport">
-      <div class="section-header">🌬️ Heat Transport (5 & 6)</div>
+      <div class="section-header">🌍 Rotation (5 & 6)</div>
       <div class="slider-group">
         <div class="slider-row">
-          <div class="slider-label">Diffusion D <span id="lbl-diff">0.20</span></div>
-          <input type="range" id="sl-diff" min="0.01" max="0.7" step="0.01" value="0.2">
+          <div class="slider-label">Day length <span id="lbl-day">24 h</span></div>
+          <input type="range" id="sl-day" min="0.778" max="2.0" step="0.01" value="1.380">
         </div>
       </div>
       <div class="record-block" style="padding:8px 12px;font-size:11px" id="diff-hint">
-        Default set by Planet Type — Ocean worlds get strong transport (smaller swings), Desert worlds get weak transport (bigger swings). Drag to override.
+        How long your planet takes to spin once. A fast spinner has stronger Coriolis forces, which pen heat into narrow bands and leave the poles cold. A slow spinner evens out. Heat transport is calculated from this and your atmospheric pressure — it is no longer a number you set directly.
       </div>
     </div>
 
@@ -725,6 +725,7 @@ if (typeof Physics === 'undefined') {
 
 const {
   stellarLuminosity, stellarTeff, stellarLifespanGyr, spectralType,
+  diffusionFrom, cloudyAlbedos, cloudLongwave,
   habitableZone, effectiveS0, tidalLockRadius, isTidallyLocked,
   magneticFieldEstimate, atmosphereThicknessLabel,
   run0dEBM, latProfileSeasonal, tidallyLockedProfile,
@@ -735,8 +736,13 @@ const {
 
 const PLANET_LABELS = Object.fromEntries(
   Object.entries(PLANET_TYPES).map(([k, v]) => [k, v.label]));
-const DIFFUSION_DEFAULTS = Object.fromEntries(
-  Object.entries(PLANET_TYPES).map(([k, v]) => [k, v.defaultD]));
+
+// The day-length slider runs on a log scale, because the interesting range
+// spans a factor of ~17 and a linear slider would waste most of its travel
+// on day lengths nobody chooses.
+const dayFromSlider = (v) => Math.pow(10, +v);
+const sliderFromDay = (h) => Math.log10(h);
+const fmtDay = (h) => h < 10 ? h.toFixed(1) + ' h' : Math.round(h) + ' h';
 
 // Presentation helper, not physics: turn a lifespan in Gyr into a label.
 function stellarLifespan(mass) {
@@ -816,7 +822,7 @@ const CFG = { responsive: true, displayModeBar: false };
 // ───────────────────────────────────────────────────────────────────
 let state = {
   mass: 1.0, dist: 1.0, co2: 400, planet: 'earth',
-  obl: 23.4, ecc: 0.0, diff: 0.2, pressure: 1.0, age: 4.5
+  obl: 23.4, ecc: 0.0, dayHours: 24, pressure: 1.0, age: 4.5
 };
 let activeTab = 't1';
 
@@ -824,7 +830,7 @@ let activeTab = 't1';
 //  DERIVED
 // ───────────────────────────────────────────────────────────────────
 function derive() {
-  const { mass, dist, co2, planet, obl, ecc, diff, pressure, age } = state;
+  const { mass, dist, co2, planet, obl, ecc, dayHours, pressure, age } = state;
   const type = PLANET_TYPES[planet];
 
   const lum = stellarLuminosity(mass);
@@ -842,7 +848,10 @@ function derive() {
   const inHzOptimistic = dist >= hzOptIn && dist <= hzOptOut;
   const isLocked = dist <= lockR;
 
-  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0, albedoWarm: type.albedo, pressureBar: pressure });
+  const dRel = diffusionFrom(dayHours, pressure, type.transportFactor);
+  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0,
+    surfaceAlbedo: type.surfaceAlbedo, cloudFraction: type.cloudFraction,
+    pressureBar: pressure });
   const Teq = ebm.equilibriumC;
   const beyondValidity = ebm.outOfRange;
 
@@ -857,7 +866,7 @@ function derive() {
   else if (obl > 54) regime = 'HIGH OBLIQUITY';
   else regime = 'STANDARD ROTATING';
 
-  return { lum, teff, hz, hzIn, hzOut, hzOptIn, hzOptOut, spType: sp.type, spTemp: sp.tempRange,
+  return { lum, teff, hz, hzIn, hzOut, hzOptIn, hzOptOut, dRel, spType: sp.type, spTemp: sp.tempRange,
            lockR, S0, inHz, inHzOptimistic, isLocked, Teq, hzMod, regime, atmLabel,
            beyondValidity, lifespanGyr, ageExceedsLifespan, magField,
            planetMassEarth: type.massEarth };
@@ -867,7 +876,7 @@ function derive() {
 //  SIDEBAR UPDATE
 // ───────────────────────────────────────────────────────────────────
 function updateSidebar() {
-  const { mass, dist, co2, obl, ecc, diff, pressure, age } = state;
+  const { mass, dist, co2, obl, ecc, dayHours, pressure, age } = state;
   const d = derive();
 
   document.getElementById('lbl-mass').textContent = mass.toFixed(2);
@@ -875,7 +884,7 @@ function updateSidebar() {
   document.getElementById('lbl-co2').textContent = co2.toFixed(0);
   document.getElementById('lbl-pressure').textContent = pressure.toFixed(2);
   document.getElementById('lbl-obl').textContent = obl.toFixed(1);
-  document.getElementById('lbl-diff').textContent = diff.toFixed(2);
+  document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
 
   document.getElementById('badge-type').textContent = d.spType;
   document.getElementById('badge-lum').textContent = d.lum.toFixed(3)+' L☉';
@@ -1067,9 +1076,11 @@ function plotEBM() {
   const { co2, planet, pressure } = state;
   const d = derive();
   const S0 = d.S0;
-  const alb = PLANET_TYPES[planet].albedo;
+  const type = PLANET_TYPES[planet];
+  const alb = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction).planetary;
   const ebm = (T0, c, s0) => run0dEBM(
-    { T0_K: T0, co2ppm: c, S0: s0, albedoWarm: alb, pressureBar: pressure }).equilibriumC;
+    { T0_K: T0, co2ppm: c, S0: s0, surfaceAlbedo: type.surfaceAlbedo,
+      cloudFraction: type.cloudFraction, pressureBar: pressure }).equilibriumC;
 
   // ── Section 4: CO₂ sensitivity ────────────────────────────────────────────
   const Teq_w = ebm(288, co2, S0);
@@ -1149,7 +1160,7 @@ function plotEBM() {
 //  PLOT: SECTION 5A — ROTATING (summer solstice + seasonal Hovmöller)
 // ───────────────────────────────────────────────────────────────────
 function plot5A() {
-  const { co2, planet, obl, diff, pressure } = state;
+  const { co2, planet, obl, dayHours, pressure } = state;
   const d = derive();
   const S0 = d.S0;
 
@@ -1160,7 +1171,7 @@ function plot5A() {
   // never ended, and the answer runs away.
   const seas = latProfileSeasonal({
     S0, co2ppm: co2, obliquityDeg: obl, planetType: planet,
-    dRel: diff, pressureBar: pressure,
+    dayHours, pressureBar: pressure,
   });
   const lats = seas.lats;
   const Tsol = seas.solsticeC;          // northern summer solstice
@@ -1280,10 +1291,14 @@ function plot5A() {
 //  PLOT: SECTION 5B — TIDALLY LOCKED (profile + D-sweep)
 // ───────────────────────────────────────────────────────────────────
 function plot5B() {
-  const { co2, planet, diff, pressure } = state;
+  const { co2, planet, dayHours, pressure } = state;
   const d = derive();
   const S0 = d.S0;
-  const D_vals = [0.05, 0.2, 0.5, diff].sort((a,b)=>a-b);
+  // A locked planet's transport is NOT rotation-scaled: its rotation equals
+  // its orbital period, which would give D of 7-25 and a flat, contrast-free
+  // planet. Bounded default, scaled only by ocean circulation.
+  const lockedD = CONSTANTS.D_LOCKED_DEFAULT * PLANET_TYPES[planet].transportFactor;
+  const D_vals = [0.05, 0.2, 0.5, lockedD].sort((a,b)=>a-b);
   // Deduplicate within 0.005
   const D_dedup = [];
   D_vals.forEach(v => { if (!D_dedup.some(x=>Math.abs(x-v)<0.005)) D_dedup.push(v); });
@@ -1297,7 +1312,7 @@ function plot5B() {
   D_dedup.forEach((D, idx) => {
     const r = tl(D);
     const angles = r.angles, temps = r.tempsC, wasClipped = r.outOfRange;
-    const isUser = Math.abs(D - diff) < 0.005;
+    const isUser = Math.abs(D - lockedD) < 0.005;
     traces.push({
       x: angles, y: temps, mode: 'lines',
       name: isUser ? `D = ${D.toFixed(2)} ← your choice` : `D = ${D.toFixed(2)}`,
@@ -1324,7 +1339,7 @@ function plot5B() {
 
   // ── Record block ───────────────────────────────────────────────────────────
   if (!yourAngles) {
-    yourResult = tl(diff);
+    yourResult = tl(lockedD);
     yourAngles = yourResult.angles; yourTemps = yourResult.tempsC; yourClipped = yourResult.outOfRange;
   }
   // No seasons on a locked planet, so warmest and coldest are the same profile.
@@ -1345,8 +1360,14 @@ function plot5B() {
     ['Day–night swing', daynightSwing.toFixed(1)+' °C'],
     MORE,
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
-    ['Diffusion coefficient D', diff.toFixed(2)+' (default for '+PLANET_LABELS[planet]+' was '+DIFFUSION_DEFAULTS[planet].toFixed(2)+')'],
-    ['Eyeball Earth regime?', diff < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
+    ['Day length', fmtDay(state.dayHours)],
+    ['Heat transport D (derived)', d.dRel.toFixed(3)+' — from day length ('+fmtDay(state.dayHours)+
+      '), pressure ('+state.pressure.toFixed(2)+' bar), and '+PLANET_LABELS[planet]+
+      ' ocean circulation (×'+PLANET_TYPES[planet].transportFactor.toFixed(1)+')'],
+    ['Cloud cover', (PLANET_TYPES[planet].cloudFraction*100).toFixed(0)+'% — reflects sunlight (cooling) and traps infrared (warming); net effect on Earth is cooling'],
+    ['Surface albedo (no clouds)', PLANET_TYPES[planet].surfaceAlbedo.toFixed(2)+
+      ' → planetary albedo '+cloudyAlbedos(PLANET_TYPES[planet].surfaceAlbedo, PLANET_TYPES[planet].cloudFraction).planetary.toFixed(2)+' with clouds'],
+    ['Eyeball Earth regime?', lockedD < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
     ['Climate zones (day side outward from substellar)', tlZones.bands.slice().reverse().map(b => b.label+': '+Math.abs(b.to)+'°–'+Math.abs(b.from)+'°').join(' · ')],
     ['Livable surface fraction (zones)', (tlZones.habitableFraction*100).toFixed(0)+'%'],
     ['Atmospheric collapse risk?', yourResult.atmosphericCollapseRisk ? '⚠ Yes — night side below the CO₂ frost point. The atmosphere would freeze onto the dark hemisphere, and this model stops applying.' : 'No — night side stays above the CO₂ frost point'],
@@ -1365,19 +1386,19 @@ function plot5B() {
 //  PLOT: SECTION 6 — FULL SUMMARY (matches notebook Phase 4 audit)
 // ───────────────────────────────────────────────────────────────────
 function plot6() {
-  const { co2, planet, obl, ecc, diff, pressure, age } = state;
+  const { co2, planet, obl, ecc, dayHours, pressure, age } = state;
   const d = derive();
   const S0 = d.S0;
-  const alb = PLANET_TYPES[planet].albedo;
+  const alb = cloudyAlbedos(PLANET_TYPES[planet].surfaceAlbedo, PLANET_TYPES[planet].cloudFraction).planetary;
 
   // 0-D transient — computed for the record block only (no longer plotted)
-  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure }).equilibriumC;
-  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure }).equilibriumC;
+  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, surfaceAlbedo:PLANET_TYPES[planet].surfaceAlbedo, cloudFraction:PLANET_TYPES[planet].cloudFraction, pressureBar:pressure }).equilibriumC;
+  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, surfaceAlbedo:PLANET_TYPES[planet].surfaceAlbedo, cloudFraction:PLANET_TYPES[planet].cloudFraction, pressureBar:pressure }).equilibriumC;
 
   // Spatial profile (lat or TL) for summary panel
   let xLabel, xVals, Tvals, xTickvals, xTicktext, spatialClipped, warmSeason, coldSeason, converged;
   if (d.isLocked) {
-    const r = tidallyLockedProfile({ S0, co2ppm:co2, planetType:planet, dRel:diff, pressureBar:pressure });
+    const r = tidallyLockedProfile({ S0, co2ppm:co2, planetType:planet, dRel: CONSTANTS.D_LOCKED_DEFAULT * PLANET_TYPES[planet].transportFactor, pressureBar:pressure });
     xVals = r.angles; Tvals = r.tempsC; spatialClipped = r.outOfRange; converged = r.converged;
     warmSeason = Tvals; coldSeason = Tvals;   // no seasons when locked
     xLabel   = 'Position (° from terminator)';
@@ -1385,7 +1406,7 @@ function plot6() {
     xTicktext = ['Anti-stellar','','Terminator','','Sub-stellar'];
   } else {
     const seas = latProfileSeasonal({ S0, co2ppm:co2, obliquityDeg:obl, planetType:planet,
-                                      dRel:diff, pressureBar:pressure });
+                                      dayHours, pressureBar:pressure });
     const ext = seasonalExtremes(seas);
     xVals = seas.lats; Tvals = seas.annualMeanC; spatialClipped = seas.outOfRange; converged = seas.converged;
     warmSeason = ext.warm; coldSeason = ext.cold;
@@ -1569,15 +1590,20 @@ document.getElementById('sel-planet').addEventListener('change', e => {
   state.planet = e.target.value;
   // Reset heat transport to a sensible default for this world type —
   // this is what actually ties "ocean vs desert" to smaller/bigger swings.
-  state.diff = DIFFUSION_DEFAULTS[e.target.value];
-  document.getElementById('sl-diff').value = state.diff;
+  // Planet type no longer sets heat transport; it sets surface albedo,
+  // cloud cover, heat storage, and an ocean-circulation factor. Transport
+  // comes from day length and pressure.
   renderActive();
 });
 document.getElementById('sl-obl').addEventListener('input', e => {
   state.obl = +e.target.value; renderActive();
 });
-document.getElementById('sl-diff').addEventListener('input', e => {
-  state.diff = +e.target.value; renderActive();
+document.getElementById('sl-day').value = sliderFromDay(state.dayHours);
+document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
+document.getElementById('sl-day').addEventListener('input', e => {
+  state.dayHours = dayFromSlider(e.target.value);
+  document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
+  renderActive();
 });
 
 // ───────────────────────────────────────────────────────────────────
