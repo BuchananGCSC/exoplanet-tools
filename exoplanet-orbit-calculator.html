@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Orbital & Planetary Calculator</title>
+<title>Orbital &amp; Planetary Calculator</title>
+<!-- Physics core, shared with the climate simulator. Classic script, not a
+     module, so this still works when the file is opened over file://. -->
+<script src="physics.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -130,6 +133,34 @@ button { cursor: pointer; background: none; border: none; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* ── Physics core check ── */
+if (typeof Physics === 'undefined') {
+  document.body.innerHTML =
+    '<div style="padding:2rem;font-family:system-ui;color:#a12c7b">' +
+    '<h2>physics.js failed to load</h2><p>This page needs <code>physics.js</code> ' +
+    'in the same folder.</p></div>';
+  throw new Error('physics.js not loaded');
+}
+
+/* ── Density presets, generated from the shared table ── */
+(function buildDensityPresets() {
+  const host = document.getElementById('density-presets');
+  if (!host) return;
+  const meta = {
+    earth:   ['🌍', 'Earth-like rocky'],
+    mars:    ['🔴', 'Mars-like'],
+    jupiter: ['🟠', 'Jupiter-like gas giant'],
+    saturn:  ['🪐', 'Saturn-like'],
+    neptune: ['🔵', 'Neptune-like ice giant'],
+  };
+  host.innerHTML = Object.entries(Physics.DENSITY_PRESETS).map(([key, value]) => {
+    const [icon, title] = meta[key] || ['', ''];
+    const name = key[0].toUpperCase() + key.slice(1);
+    return `<button class="btn-option" onclick="setDensity(${value})" ` +
+           `title="${title}">${icon} ${name} (${value})</button>`;
+  }).join('');
+})();
 
 /* ── Theme Toggle ── */
 .theme-toggle {
@@ -531,14 +562,8 @@ button { cursor: pointer; background: none; border: none; }
         </div>
       </div>
 
-      <!-- Reference density hints -->
-      <div style="display:flex; flex-wrap:wrap; gap: var(--space-2);">
-        <button class="btn-option" onclick="setDensity(5.51)" title="Earth-like rocky">🌍 Earth (5.51)</button>
-        <button class="btn-option" onclick="setDensity(3.93)" title="Mars-like">🔴 Mars (3.93)</button>
-        <button class="btn-option" onclick="setDensity(1.33)" title="Jupiter-like gas giant">🟠 Jupiter (1.33)</button>
-        <button class="btn-option" onclick="setDensity(0.69)" title="Saturn-like">🪐 Saturn (0.69)</button>
-        <button class="btn-option" onclick="setDensity(1.64)" title="Neptune-like ice giant">🔵 Neptune (1.64)</button>
-      </div>
+      <!-- Reference density hints, built from Physics.DENSITY_PRESETS -->
+      <div style="display:flex; flex-wrap:wrap; gap: var(--space-2);" id="density-presets"></div>
 
       <!-- Calculate button -->
       <button class="btn-calculate" style="background: var(--color-warning);" 
@@ -568,6 +593,34 @@ button { cursor: pointer; background: none; border: none; }
 </div><!-- end app-wrapper -->
 
 <script>
+/* ── Physics core check ── */
+if (typeof Physics === 'undefined') {
+  document.body.innerHTML =
+    '<div style="padding:2rem;font-family:system-ui;color:#a12c7b">' +
+    '<h2>physics.js failed to load</h2><p>This page needs <code>physics.js</code> ' +
+    'in the same folder.</p></div>';
+  throw new Error('physics.js not loaded');
+}
+
+/* ── Density presets, generated from the shared table ── */
+(function buildDensityPresets() {
+  const host = document.getElementById('density-presets');
+  if (!host) return;
+  const meta = {
+    earth:   ['🌍', 'Earth-like rocky'],
+    mars:    ['🔴', 'Mars-like'],
+    jupiter: ['🟠', 'Jupiter-like gas giant'],
+    saturn:  ['🪐', 'Saturn-like'],
+    neptune: ['🔵', 'Neptune-like ice giant'],
+  };
+  host.innerHTML = Object.entries(Physics.DENSITY_PRESETS).map(([key, value]) => {
+    const [icon, title] = meta[key] || ['', ''];
+    const name = key[0].toUpperCase() + key.slice(1);
+    return `<button class="btn-option" onclick="setDensity(${value})" ` +
+           `title="${title}">${icon} ${name} (${value})</button>`;
+  }).join('');
+})();
+
 /* ── Theme Toggle ── */
 (function(){
   const toggle = document.querySelector('[data-theme-toggle]');
@@ -660,7 +713,7 @@ function keplerCalculate() {
       if (isNaN(axisVal) || isNaN(massVal)) throw new Error('Enter values for both Semimajor Axis and Stellar Mass.');
       if (axisVal <= 0) throw new Error('Semimajor axis must be positive.');
       if (massVal <= 0) throw new Error('Stellar mass must be positive.');
-      const P = Math.sqrt(Math.pow(axisVal, 3) / massVal);
+      const P = Physics.kepler.period(axisVal, massVal);
       showResult('k-result','k-result-label','k-result-value','k-result-note', false,
         'Orbital Period  P',
         formatNum(P) + '  years',
@@ -670,7 +723,7 @@ function keplerCalculate() {
       if (isNaN(periodVal) || isNaN(massVal)) throw new Error('Enter values for both Orbital Period and Stellar Mass.');
       if (periodVal <= 0) throw new Error('Orbital period must be positive.');
       if (massVal <= 0) throw new Error('Stellar mass must be positive.');
-      const a = Math.pow(massVal * Math.pow(periodVal, 2), 1/3);
+      const a = Physics.kepler.semiMajorAxis(periodVal, massVal);
       showResult('k-result','k-result-label','k-result-value','k-result-note', false,
         'Semimajor Axis  a',
         formatNum(a) + '  AU',
@@ -680,7 +733,7 @@ function keplerCalculate() {
       if (isNaN(axisVal) || isNaN(periodVal)) throw new Error('Enter values for both Semimajor Axis and Orbital Period.');
       if (axisVal <= 0) throw new Error('Semimajor axis must be positive.');
       if (periodVal <= 0) throw new Error('Orbital period must be positive.');
-      const M = Math.pow(axisVal, 3) / Math.pow(periodVal, 2);
+      const M = Physics.kepler.starMass(axisVal, periodVal);
       showResult('k-result','k-result-label','k-result-value','k-result-note', false,
         'Stellar Mass  M',
         formatNum(M) + '  M☉',
@@ -694,11 +747,8 @@ function keplerCalculate() {
 }
 
 /* ── Planetary Properties ── */
-// Constants
-const M_EARTH  = 5.972e24;   // kg
-const R_EARTH  = 6.371e6;    // m
-const G        = 6.674e-11;  // m³ kg⁻¹ s⁻²
-const g_EARTH  = 9.807;      // m/s²
+// Constants live in physics.js. Nothing in this file should define a
+// physical constant or a formula; if it does, the two tools can disagree.
 
 function setDensity(val) {
   document.getElementById('p-density').value = val;
@@ -713,19 +763,14 @@ function planetCalculate() {
     if (massEarths <= 0) throw new Error('Planetary mass must be positive.');
     if (densGcm3 <= 0) throw new Error('Mean density must be positive.');
 
-    // Convert density from g/cm³ to kg/m³
-    const rho_kgm3 = densGcm3 * 1000;          // 1 g/cm³ = 1000 kg/m³
-
-    // Mass in kg
-    const M_kg = massEarths * M_EARTH;
-
-    // R = (3M / 4πρ)^(1/3)  in meters
-    const R_m = Math.pow((3 * M_kg) / (4 * Math.PI * rho_kgm3), 1/3);
-    const R_earth = R_m / R_EARTH;
-
-    // g = GM / R²
-    const g_surf = (G * M_kg) / (R_m * R_m);
-    const g_rel  = g_surf / g_EARTH;
+    // R = (3M / 4πρ)^(1/3), then g = GM / R². Both live in physics.js,
+    // where the test suite checks that 1 M⊕ at 5.51 g/cm³ returns exactly
+    // one Earth radius and one Earth gravity.
+    const props   = Physics.planetaryProperties(massEarths, densGcm3);
+    const R_m     = props.radiusM;
+    const R_earth = props.radiusEarth;
+    const g_surf  = props.gravityMS2;
+    const g_rel   = props.gravityEarth;
 
     showResult('p-result','p-result-label','p-result-value','p-result-note', false,
       'Planetary Radius & Surface Gravity',
