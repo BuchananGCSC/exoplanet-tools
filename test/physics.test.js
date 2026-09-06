@@ -284,7 +284,7 @@ test('the seasonal cycle conserves the annual mean it is built from', () => {
 
 test('every documented planet type is complete', () => {
   for (const [key, t] of Object.entries(P.PLANET_TYPES)) {
-    for (const field of ['label', 'albedo', 'defaultD', 'mixedLayerM']) {
+    for (const field of ['label', 'albedo', 'defaultD', 'mixedLayerM', 'massEarth']) {
       assert.ok(t[field] !== undefined, `${key} is missing ${field}`);
     }
     assert.ok(t.albedo > 0 && t.albedo < 1, key + ' has an impossible albedo');

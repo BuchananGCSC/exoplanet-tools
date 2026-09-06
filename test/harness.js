@@ -34,6 +34,41 @@ const derived = {
     return P.areaWeightedMean(angles, Q);
   },
 
+  /** Warmest and coldest season at every latitude, from one seasonal run. */
+  seasonalExtremes(planetType, extra = {}) {
+    const s = P.latProfileSeasonal(Object.assign({ planetType }, extra));
+    const warm = [], cold = [];
+    s.lats.forEach((_, i) => {
+      let mx = -Infinity, mn = Infinity;
+      s.monthsRaw.forEach((row) => { mx = Math.max(mx, row[i]); mn = Math.min(mn, row[i]); });
+      warm.push(mx); cold.push(mn);
+    });
+    return { lats: s.lats, warm, cold };
+  },
+
+  /** Climate zone key at one latitude. */
+  climateZoneAt(planetType, latDeg) {
+    const { lats, warm, cold } = derived.seasonalExtremes(planetType);
+    return P.climateZones(lats, warm, cold).keys[idx(latDeg)];
+  },
+
+  /** Area-weighted share of the surface in a zone that thaws and does not cook. */
+  climateHabitableFraction(planetType, extra = {}) {
+    const { lats, warm, cold } = derived.seasonalExtremes(planetType, extra);
+    return P.climateZones(lats, warm, cold).habitableFraction;
+  },
+
+  /** Number of distinct zone bands, a proxy for how varied the planet is. */
+  climateBandCount(planetType) {
+    const { lats, warm, cold } = derived.seasonalExtremes(planetType);
+    return P.climateZones(lats, warm, cold).bands.length;
+  },
+
+  /** Band count for a minus band count for b. Tests a comparison, not a number. */
+  climateBandCountDifference(a, b) {
+    return derived.climateBandCount(a) - derived.climateBandCount(b);
+  },
+
   keplerPeriod(aAU, starMass) {
     return P.kepler.period(aAU, starMass);
   },
