@@ -17,7 +17,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { P, resolve, pluck, idx } = require('./harness.js');
+const { P, derived, resolve, pluck, idx } = require('./harness.js');
 
 const contract = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'test_cases.json'), 'utf8'));
@@ -284,9 +284,89 @@ test('the seasonal cycle conserves the annual mean it is built from', () => {
 
 test('every documented planet type is complete', () => {
   for (const [key, t] of Object.entries(P.PLANET_TYPES)) {
-    for (const field of ['label', 'albedo', 'defaultD', 'mixedLayerM', 'massEarth']) {
+    for (const field of ['label', 'surfaceAlbedo', 'cloudFraction',
+                         'transportFactor', 'mixedLayerM', 'massEarth']) {
       assert.ok(t[field] !== undefined, `${key} is missing ${field}`);
     }
-    assert.ok(t.albedo > 0 && t.albedo < 1, key + ' has an impossible albedo');
+    assert.ok(t.surfaceAlbedo > 0 && t.surfaceAlbedo < 1, key + ' has an impossible surface albedo');
+    assert.ok(t.cloudFraction >= 0 && t.cloudFraction <= 1, key + ' has an impossible cloud fraction');
+    assert.ok(t.transportFactor > 0, key + ' has an impossible transport factor');
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * 5. Clouds and derived heat transport
+ * ------------------------------------------------------------------ */
+
+test('clouds cool in the shortwave and warm in the longwave', () => {
+  // Both effects must grow with cloud cover, in opposite directions.
+  let prevAlbedo = -Infinity, prevLW = -Infinity;
+  for (const f of [0, 0.2, 0.5, 0.8, 1.0]) {
+    const a = P.cloudyAlbedos(0.15, f).planetary;
+    const lw = P.cloudLongwave(f);
+    assert.ok(a > prevAlbedo, `planetary albedo did not rise at f = ${f}`);
+    assert.ok(lw >= prevLW, `longwave trapping did not rise at f = ${f}`);
+    prevAlbedo = a; prevLW = lw;
+  }
+  // On Earth the net is cooling. If this flips, the terms are swapped.
+  assert.ok(derived.cloudNetEffect(0.15, 0.67) < 0, 'Earth clouds should cool on balance');
+});
+
+test('cloud fraction is clamped to a physical range', () => {
+  assert.strictEqual(P.cloudLongwave(-1), 0);
+  assert.strictEqual(P.cloudLongwave(2), P.CONSTANTS.LW_CLOUD);
+  assert.ok(P.cloudyAlbedos(0.15, 5).planetary <= 1);
+});
+
+test('a cloudier planet is colder, all else equal', () => {
+  let prev = Infinity;
+  for (const cloudFraction of [0, 0.3, 0.6, 0.9]) {
+    const T = P.run0dEBM({ cloudFraction }).equilibriumCRaw;
+    assert.ok(T < prev, `T did not fall at cloud fraction ${cloudFraction}`);
+    prev = T;
+  }
+});
+
+test('heat transport falls with rotation rate and rises with pressure', () => {
+  let prev = -Infinity;
+  for (const dayHours of [6, 12, 24, 48, 100]) {
+    const d = P.diffusionFrom(dayHours, 1.0, 1.0);
+    assert.ok(d > prev, `D did not rise with a longer day at ${dayHours} h`);
+    prev = d;
+  }
+  prev = -Infinity;
+  for (const pressureBar of [0.1, 0.5, 1, 4, 20]) {
+    const d = P.diffusionFrom(24, pressureBar, 1.0);
+    assert.ok(d > prev, `D did not rise with pressure at ${pressureBar} bar`);
+    prev = d;
+  }
+});
+
+test('a faster-spinning planet has a steeper pole-to-equator gradient', () => {
+  let prev = -Infinity;
+  for (const dayHours of [100, 48, 24, 12, 6]) {
+    const s = P.latProfileSeasonal({ dayHours });
+    const contrast = s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
+    assert.ok(contrast > prev, `contrast did not steepen at ${dayHours} h`);
+    prev = contrast;
+  }
+});
+
+test('clouds keep the rotation response from running away', () => {
+  // The specific failure this guards: without explicit clouds, shortening
+  // the day from 24 to 18 hours cooled the planet by nine degrees, because
+  // the single-valued ice albedo made the feedback far too strong.
+  const earth = P.latProfileSeasonal({ dayHours: 24 }).globalMeanC;
+  const fast = P.latProfileSeasonal({ dayHours: 18 }).globalMeanC;
+  assert.ok(earth - fast < 4,
+    `an 18-hour day cooled the planet by ${(earth - fast).toFixed(1)} degC; ` +
+    'that is the over-sensitivity the cloud term exists to damp');
+});
+
+test('a thick atmosphere flattens the temperature gradient', () => {
+  const thin = P.latProfileSeasonal({ pressureBar: 1 });
+  const thick = P.latProfileSeasonal({ pressureBar: 8 });
+  const c = (s) => s.annualMeanC[idx(0)] - s.annualMeanC[idx(90)];
+  assert.ok(c(thick) < c(thin) / 2,
+    'pressure must feed heat transport, not only greenhouse forcing');
 });
