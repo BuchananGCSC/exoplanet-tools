@@ -22,7 +22,9 @@
     --purple: #a371f7;
     --cyan: #39d0f7;
     --font: 'Segoe UI', system-ui, sans-serif;
+    --sidebar-w: 264px;
   }
+  @media (max-width: 1360px) { :root { --sidebar-w: 236px; } }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg);
@@ -31,30 +33,38 @@
     font-size: 14px;
     line-height: 1.5;
   }
-  header {
-    background: linear-gradient(135deg, #0d1117 0%, #1a1f2e 100%);
-    border-bottom: 1px solid var(--border);
-    padding: 16px 24px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  /* The title lives in the sidebar. A full-width header band cost ~47px of a
+     750px-tall screen to say something that never changes. */
+  .sb-title {
+    font-size: 13.5px; font-weight: 600; color: var(--text);
+    padding-bottom: 11px; border-bottom: 1px solid var(--border);
+    margin-bottom: -4px;
   }
-  header h1 { font-size: 20px; font-weight: 600; }
-  header p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  /* LAYOUT
+     Was: grid pinned to `height: calc(100vh - 70px)`, main area `overflow:hidden`.
+     On a 1200x750 laptop that clipped the 1388px-wide tab row with no scrollbar
+     (Tabs 6 and 7 literally unreachable) and trapped each tab in a 595px nested
+     scroller -- Tab 5 needs 1295px, so its Record block sat ~700px below a fold
+     with no visible scrollbar. Now the page scrolls like a page; nothing clips. */
   .layout {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    height: calc(100vh - 70px);
+    grid-template-columns: var(--sidebar-w) 1fr;
+    align-items: start;
   }
+
   /* SIDEBAR */
   .sidebar {
     background: var(--panel);
     border-right: 1px solid var(--border);
-    overflow-y: auto;
-    padding: 16px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
   }
   .section-header {
     font-size: 11px;
@@ -149,56 +159,233 @@
   .stat-value { font-size: 16px; font-weight: 600; color: var(--text); margin-top: 2px; font-variant-numeric: tabular-nums; }
   .stat-unit { font-size: 10px; color: var(--muted); }
 
-  /* TABS */
-  .main-area { overflow: hidden; display: flex; flex-direction: column; }
-  .tabs {
-    display: flex;
-    align-items: flex-end;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
-    padding: 8px 16px 0 16px;
-    gap: 0;
-    flex-shrink: 0;
-  }
-  .tab-phase-group { display: flex; flex-direction: column; gap: 4px; }
-  .tab-phase-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    color: var(--muted);
-    padding: 0 10px;
-    text-transform: uppercase;
-  }
-  .tab-phase-tabs { display: flex; gap: 2px; }
-  .tab-phase-divider { width: 1px; align-self: stretch; background: var(--border); margin: 14px 8px 0 8px; }
-  .tab {
-    padding: 12px 16px;
-    font-size: 13px;
-    color: var(--muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s, opacity 0.2s;
-    user-select: none;
-    white-space: nowrap;
-  }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-hint { font-size: 10px; color: var(--green); font-weight: 700; margin-left: 4px; }
-  .tab-not-yours { opacity: 0.5; }
-  .next-hint {
-    margin-top: 8px; padding-top: 8px;
-    border-top: 1px dashed var(--border);
-    font-size: 11px; color: var(--accent); font-weight: 600;
-  }
-  .sidebar-dim { opacity: 0.35; transition: opacity 0.2s ease; }
-  .tab-content {
-    display: none;
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-  }
+  /* min-width:0 lets this grid child shrink instead of forcing the row wider
+     than the viewport -- without it a wide plot pushes the whole page sideways. */
+  .main-area { display: flex; flex-direction: column; min-width: 0; }
+  /* Every control group collapses on its own. Groups this tab needs open
+     themselves; the rest stay as a clickable header, so a student can still
+     see that CO2 exists without it taking up room. Hiding them outright
+     (and dimming them to 0.35 before that) both failed the same way: you
+     cannot choose a control you cannot see. */
+  .sec-body { display: flex; flex-direction: column; gap: 10px; }
+  .sec.collapsed .sec-body { display: none; }
+  .section-header { cursor: pointer; user-select: none; }
+  .section-header:hover { color: var(--text); }
+  .section-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .section-header::after { order: 1; }
+  .sh-chev { order: 2; font-size: 10px; transition: transform 0.15s; flex-shrink: 0; }
+  .sec.collapsed .sh-chev { transform: rotate(-90deg); }
+  .tab-content { display: none; padding: 14px 16px 28px 16px; }
   .tab-content.active { display: flex; flex-direction: column; gap: 12px; }
-  .plot-container { flex: 1; min-height: 320px; }
+  .plot-container { min-height: 380px; }
+  /* Left to fill the content column this ran ~3.5:1 -- very wide and short,
+     with no aspect the data itself demands. Capped and centred instead. */
+  #plot-hz { max-width: 720px; margin: 0 auto; min-height: 560px; width: 100%; }
+  /* The orbit plot is aspect-locked (scaleanchor), so the circle can only be
+     as large as the container is TALL -- extra width does nothing for it. */
+  #plot-orbit { min-height: 560px; }
+
+  /* PLANETARY DOSSIER (Tab 7)
+     Phase 4 asks what an organism has to survive, so the summary is grouped by
+     the decisions a student is about to make, not by the order the model
+     happened to compute things in. Each group leads with the consequence and
+     keeps the raw numbers underneath, because the packet is a reference they
+     reason from later, away from the screen. */
+  #rec6-vals { display: block; }
+  .dossier {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 12px; margin-bottom: 4px;
+  }
+  .dsec { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; }
+  .dsec h4 {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--accent); margin-bottom: 6px;
+  }
+  .dsec-lead { font-size: 12.5px; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
+  .dsec-lead b { color: var(--orange); font-weight: 600; }
+  .dsec-vals { display: flex; flex-direction: column; gap: 3px; }
+  .dsec-vals .kv { font-size: 11.5px; }
+
+  /* ---- STEPPER RAIL ----
+     A connected, numbered sequence says "these run in order, you are here"
+     -- which tabs cannot say, because tabs look like equal random-access peers.
+     Phase names move into the task strip, which frees the whole width for steps. */
+  .stepper {
+    display: flex; align-items: flex-start; list-style: none;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 11px 16px 9px 16px; margin: 0;
+    position: sticky; top: 0; z-index: 30;
+  }
+  .step {
+    flex: 1; position: relative; display: flex; flex-direction: column;
+    align-items: center; gap: 5px; cursor: pointer; min-width: 0;
+    background: none; border: none; font-family: inherit; padding: 0;
+  }
+  .step:not(:last-child)::after {
+    content: ''; position: absolute; top: 12px; left: calc(50% + 15px);
+    width: calc(100% - 30px); height: 2px; background: var(--border);
+  }
+  .step.done:not(:last-child)::after { background: rgba(88,166,255,0.45); }
+  .step-num {
+    width: 25px; height: 25px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 2px solid var(--border);
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    position: relative; z-index: 1;
+  }
+  .step-lbl {
+    font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.25;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .step.done .step-num { border-color: rgba(88,166,255,0.55); color: var(--accent); }
+  .step.current .step-num { border-color: var(--accent); background: var(--accent); color: #0d1117; }
+  .step.current .step-lbl { color: var(--accent); font-weight: 600; }
+  .step.skipped .step-num { border-style: dashed; opacity: 0.55; }
+  .step.skipped .step-lbl { opacity: 0.55; }
+  .step:hover .step-lbl { color: var(--text); }
+  .step:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* RECORD DRAWER
+     Slides in over the plot rather than sitting below it, so the values a
+     student is copying never require scrolling away from the graph they came
+     from. Deliberately NOT modal and with no backdrop: the sidebar stays live,
+     so dragging CO2 while the drawer is open updates the values in place --
+     which is the thing a jump-to-anchor could never do.
+     Tabs 2 and 7 keep their panels inline; see RECORD_DRAWER_TABS. */
+  .record-drawer { display: none; }
+  .record-drawer.open {
+    display: block;
+    position: fixed;
+    top: var(--stepper-h, 62px); right: 0; bottom: 0;
+    width: min(430px, 94vw);
+    z-index: 40;
+    overflow-y: auto;
+    padding: 16px 18px 24px 18px;
+    border-left: 3px solid var(--accent);
+    border-top: 1px solid var(--border);
+    border-radius: 0; margin: 0;
+    box-shadow: -20px 0 44px rgba(0,0,0,0.5);
+    animation: dockIn 0.16s ease-out;
+  }
+  @keyframes dockIn { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .record-drawer.open { animation: none; } }
+  /* One column: 460px is not two columns of label-and-value. */
+  .record-drawer.open .vals { grid-template-columns: 1fr; }
+  .record-drawer.open strong { padding-right: 30px; }
+  .dock-close {
+    position: absolute; top: 12px; right: 14px;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    width: 26px; height: 26px; line-height: 1;
+    font-size: 14px; font-family: inherit; cursor: pointer;
+  }
+  .dock-close:hover { border-color: var(--accent); color: var(--accent); }
+  .dock-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* MASS-REGIME DERIVATION CHAIN
+     Shows mass -> gravity -> escape velocity -> what the world can hold ->
+     and therefore why its surface looks the way it does. */
+  .chain {
+    margin-top: 10px; font-size: 11.5px; color: var(--muted);
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .chain-step { display: flex; gap: 6px; align-items: baseline; }
+  .chain-step .ca { color: var(--muted); flex-shrink: 0; }
+  .chain-step .cb { color: var(--text); font-variant-numeric: tabular-nums; }
+  .chain-keeps b { color: var(--green); font-weight: 600; }
+  .chain-loses b { color: var(--red); font-weight: 600; }
+  .chain-so {
+    border-left: 2px solid var(--accent); padding-left: 8px;
+    color: var(--text); line-height: 1.45;
+  }
+  .chain-warn {
+    margin-top: 9px; font-size: 11.5px; line-height: 1.45;
+    background: rgba(210,153,34,0.10); border: 1px solid rgba(210,153,34,0.4);
+    border-radius: 6px; padding: 7px 9px; color: var(--yellow);
+  }
+  .chain-warn b { color: var(--yellow); }
+
+  /* SPLIT LAYOUT (Tab 2)
+     The orbit plot is a circle, so it can never use the full width of the
+     content column. Putting the record panel in the leftover space costs
+     nothing and removes a scroll. */
+  .split-2 {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 360px);
+    gap: 12px; align-items: start;
+  }
+  .split-2 .record-block .vals { grid-template-columns: 1fr; }
+  @media (max-width: 1100px) { .split-2 { grid-template-columns: 1fr; } }
+
+  /* PLOT SWITCHER (Tabs 4 and 5)
+     Two closely-related plots that do not warrant separate steps. Stacking
+     them meant scrolling past one to reach the other and squeezed both;
+     switching lets each have the full width and full height. */
+  .plot-switch { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ps-btn {
+    background: var(--bg); color: var(--muted); font-family: inherit;
+    font-size: 12px; border: 1px solid var(--border);
+    border-radius: 16px; padding: 5px 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .ps-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .ps-btn.active {
+    background: rgba(88,166,255,0.13); border-color: var(--accent);
+    color: var(--accent); font-weight: 600;
+  }
+  .ps-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .plot-group { display: flex; flex-direction: column; gap: 10px; }
+  .plot-pane { display: none; }
+  .plot-pane.active { display: block; }
+
+  /* TASK STRIP -- one line saying what this tab is for, in student words. */
+  .task-strip {
+    display: flex; align-items: baseline; gap: 9px;
+    background: rgba(88,166,255,0.06);
+    border: 1px solid rgba(88,166,255,0.22);
+    border-radius: 6px; padding: 7px 12px;
+    font-size: 12.5px; color: var(--text);
+  }
+  .task-strip .ts-phase {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--accent);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .task-strip.na { background: rgba(210,153,34,0.08); border-color: rgba(210,153,34,0.35); }
+  .ts-sp { flex: 1; }
+  /* Tabs 4 and 5 are taller than the viewport, so the Record block -- the
+     thing the student actually came for -- starts below the fold. */
+  .ts-jump {
+    background: transparent; color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.35); border-radius: 5px;
+    padding: 3px 9px; font-size: 11.5px; font-family: inherit;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  }
+  .ts-jump:hover { background: rgba(88,166,255,0.12); }
+  .task-strip.na .ts-phase { color: var(--yellow); }
+
+  /* TAB FOOTER NAV -- the Next hint used to be static text at the bottom of
+     the Record block; students had to read it, then hunt for the tab up top. */
+  .tab-nav {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 2px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .tab-nav .spacer { flex: 1; }
+  .nav-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 8px 14px; font-size: 13px; font-family: inherit;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .nav-btn.primary {
+    background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600;
+  }
+  .nav-btn.primary:hover { opacity: 0.87; color: #0d1117; }
+  .nav-btn .nb-sub { font-size: 10.5px; opacity: 0.72; }
+  .nav-btn[disabled] { opacity: 0.35; cursor: default; }
+  .nav-btn[disabled]:hover { border-color: var(--border); color: var(--text); }
   .record-block {
     position: relative;
     z-index: 1;
@@ -219,10 +406,21 @@
   .warn { color: var(--yellow); background: rgba(210,153,34,0.08); border-color: var(--yellow); }
   .info-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
   .plot-half { min-height: 280px; }
+  /* Side by side needs real width for two legends and two axis label sets.
+     Below ~1150px of content width they stack instead of squeezing. */
+  .ebm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 420px; }
+  .ebm-grid > div { min-height: 400px; min-width: 0; }
+  @media (max-width: 1440px) {
+    /* Stacked and readable beats side-by-side and squinting, but they get a
+       little shorter stacked so the tab is not an endless scroll. */
+    .ebm-grid { grid-template-columns: 1fr; min-height: 0; }
+    .ebm-grid > div { min-height: 330px; }
+  }
   /* Tab 5: taller plots, record panel below the fold. flex-shrink is off so
      these keep their height instead of being squeezed by whatever follows. */
-  #plot-5a      { min-height: 480px; flex-shrink: 0; }
-  #plot-5a-hovm { min-height: 400px; flex-shrink: 0; }
+  /* One at a time now, so each gets a proper height instead of splitting one. */
+  #plot-5a      { min-height: 470px; }
+  #plot-5a-hovm { min-height: 470px; }
 .rec-more { margin-top: 0.5rem; border-top: 1px solid #30363d; padding-top: 0.4rem; }
 .rec-more > summary {
   cursor: pointer; font-size: 0.78rem; color: #8b949e;
@@ -245,17 +443,11 @@
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>🌍 Exoplanet Climate Simulator</h1>
-    <p>Adjust sliders — plots update instantly. No install required.</p>
-  </div>
-</header>
-
 <div class="layout">
 
   <!-- SIDEBAR -->
   <div class="sidebar">
+    <div class="sb-title">🌍 Exoplanet Climate Simulator</div>
 
     <div id="sidebar-star">
       <div class="section-header">⭐ Star</div>
@@ -318,31 +510,78 @@
       </div>
     </div>
 
-    <div id="sidebar-climate">
-      <div class="section-header">🌡️ Climate</div>
+    <div id="sidebar-planet">
+      <div class="section-header">🌎 Planet</div>
       <div class="slider-group">
         <div class="slider-row">
-          <div class="slider-label">CO₂ (ppm) <span id="lbl-co2">400</span></div>
-          <input type="range" id="sl-co2" min="70" max="10000" step="50" value="400">
+          <div class="slider-label">Quick pick, then adjust</div>
+          <select id="sel-planet">
+            <option value="">— custom —</option>
+            <option value="desert">Mars-like</option>
+            <option value="earth" selected>Earth-like</option>
+            <option value="ocean">Super-Earth</option>
+          </select>
         </div>
         <div class="slider-row">
-          <div class="slider-label">Atmospheric Pressure (bar) <span id="lbl-pressure">1.00</span></div>
+          <div class="slider-label">Planet mass <span id="lbl-pmass">1.00 M⊕</span></div>
+          <input type="range" id="sl-pmass" min="-1.3" max="1" step="0.01" value="0">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Mean density (g/cm³) <span id="lbl-pdens">5.51</span></div>
+          <input type="range" id="sl-pdens" min="2" max="10" step="0.01" value="5.51">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Surface water <span id="lbl-water">mixed land and sea</span></div>
+          <input type="range" id="sl-water" min="0" max="1" step="0.01" value="0.5">
+        </div>
+      </div>
+      <!-- The chain the interface used to leave out. Mass reached only the
+           tidal-lock radius and the dynamo; albedo, heat transport and heat
+           storage sat beside it as bare assertions. -->
+      <div class="chain" id="mass-chain"></div>
+    </div>
+
+    <div id="sidebar-climate">
+      <div class="section-header">🌫️ Atmosphere</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Total pressure (bar) <span id="lbl-pressure">1.00</span></div>
           <input type="range" id="sl-pressure" min="0.05" max="10" step="0.05" value="1.0">
         </div>
+        <!-- Log sliders: one control has to reach from 400 ppm (Earth) to 96%
+             (Venus), and a linear scale cannot do both ends. -->
         <div class="slider-row">
-          <div class="slider-label">Planet Type
-          </div>
-          <select id="sel-planet">
-            <option value="earth">Earth-like</option>
-            <option value="desert">Desert World</option>
-            <option value="ocean">Ocean Super-Earth</option>
-          </select>
+          <div class="slider-label">Carbon dioxide <span id="lbl-co2">400 ppm</span></div>
+          <input type="range" id="sl-co2" min="-1" max="6" step="0.02" value="2.602">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Oxygen <span id="lbl-o2">21%</span></div>
+          <input type="range" id="sl-o2" min="-1" max="6" step="0.02" value="5.32">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Hydrogen <span id="lbl-h2">none</span></div>
+          <input type="range" id="sl-h2" min="-1" max="6" step="0.02" value="-1">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Methane <span id="lbl-ch4">none</span></div>
+          <input type="range" id="sl-ch4" min="-1" max="4" step="0.02" value="-1">
+        </div>
+        <div class="chain-step" style="font-size:11.5px">
+          <span class="ca">Nitrogen (the remainder)</span><span class="cb" id="lbl-n2">78%</span>
+        </div>
+        <div class="chain-so" style="font-size:11px;margin-top:4px">
+          Move the oxygen slider and the temperature will not budge. Oxygen and
+          nitrogen are <b>symmetric</b> molecules — two identical atoms — so their
+          vibrations cannot absorb infrared, and no amount of either warms a planet.
+          Only the lopsided molecules do that: CO₂, methane, water.
+          Oxygen changes this world in a different way — see below.
         </div>
       </div>
       <div class="badge-row" style="margin-top:10px">
         <span class="badge badge-blue" id="badge-atm">Moderate atmosphere</span>
         <span class="badge badge-purple" id="badge-swing">Swing: — °C</span>
       </div>
+      <div class="chain-warn" id="atm-warn" hidden></div>
     </div>
 
     <div id="sidebar-rotating">
@@ -356,15 +595,15 @@
     </div>
 
     <div id="sidebar-heattransport">
-      <div class="section-header">🌍 Rotation (5 & 6)</div>
+      <div class="section-header">🌬️ Heat Transport (5 & 6)</div>
       <div class="slider-group">
         <div class="slider-row">
-          <div class="slider-label">Day length <span id="lbl-day">24 h</span></div>
-          <input type="range" id="sl-day" min="0.778" max="2.0" step="0.01" value="1.380">
+          <div class="slider-label">Diffusion D <span id="lbl-diff">0.20</span></div>
+          <input type="range" id="sl-diff" min="0.01" max="0.7" step="0.01" value="0.2">
         </div>
       </div>
       <div class="record-block" style="padding:8px 12px;font-size:11px" id="diff-hint">
-        How long your planet takes to spin once. A fast spinner has stronger Coriolis forces, which pen heat into narrow bands and leave the poles cold. A slow spinner evens out. Heat transport is calculated from this and your atmospheric pressure — it is no longer a number you set directly.
+        Default set by Planet Type — Ocean worlds get strong transport (smaller swings), Desert worlds get weak transport (bigger swings). Drag to override.
       </div>
     </div>
 
@@ -399,56 +638,24 @@
 
   <!-- MAIN AREA -->
   <div class="main-area">
-    <div class="tabs">
-      <div class="tab-phase-group">
-        <div class="tab-phase-label">Phase 1 · Habitability</div>
-        <div class="tab-phase-tabs">
-          <div class="tab active" onclick="showTab('t1')">1 · Star</div>
-          <div class="tab" onclick="showTab('t2')">2 · Orbit</div>
-          <div class="tab" onclick="showTab('tcalc')">3 · Orbital Calculators</div>
-        </div>
-      </div>
-      <div class="tab-phase-divider"></div>
-      <div class="tab-phase-group">
-        <div class="tab-phase-label">Phase 2 · Climate</div>
-        <div class="tab-phase-tabs">
-          <div class="tab" onclick="showTab('t3')">4 · Energy Balance Model</div>
-        </div>
-      </div>
-      <div class="tab-phase-divider"></div>
-      <div class="tab-phase-group">
-        <div class="tab-phase-label">Phase 3 · World Mapping</div>
-        <div class="tab-phase-tabs">
-          <div class="tab" id="tabbtn-t5a" onclick="showTab('t5a')">5 · Rotating Climate<span class="tab-hint" id="hint-rotating"></span></div>
-          <div class="tab" id="tabbtn-t5b" onclick="showTab('t5b')">6 · Tidally Locked<span class="tab-hint" id="hint-tl"></span></div>
-        </div>
-      </div>
-      <div class="tab-phase-divider"></div>
-      <div class="tab-phase-group">
-        <div class="tab-phase-label">Phase 4 · Alien Design</div>
-        <div class="tab-phase-tabs">
-          <div class="tab" onclick="showTab('t6')">7 · Full Summary</div>
-        </div>
-      </div>
-    </div>
-
+    <ol class="stepper" id="stepper" aria-label="Project steps"></ol>
     <!-- TAB 1: STAR -->
     <div class="tab-content active" id="t1">
       <div class="plot-container" id="plot-hz"></div>
       <div class="record-block" id="rec1">
         <strong>📋 Record — Section 1 values to copy into your handout</strong>
         <div class="vals" id="rec1-vals"></div>
-        <div class="next-hint">Next: &rarr; Tab 2 &middot; Orbit</div>
       </div>
     </div>
 
     <!-- TAB 2: ORBIT -->
     <div class="tab-content" id="t2">
-      <div class="plot-container" id="plot-orbit"></div>
-      <div class="record-block" id="rec2">
-        <strong>📋 Record — Section 2 values to copy into your handout</strong>
-        <div class="vals" id="rec2-vals"></div>
-        <div class="next-hint">Next: &rarr; Tab 3 &middot; Orbital Calculators</div>
+      <div class="split-2">
+        <div class="plot-container" id="plot-orbit"></div>
+        <div class="record-block" id="rec2">
+          <strong>📋 Record — Section 2 values to copy into your handout</strong>
+          <div class="vals" id="rec2-vals"></div>
+        </div>
       </div>
     </div>
 
@@ -644,9 +851,6 @@
         </div>
 
       </div><!-- end calc-grid-inner -->
-      <div class="record-block" style="margin-top:12px">
-        <div class="next-hint" style="border:none;margin:0;padding:0">Next: &rarr; Tab 4 &middot; Energy Balance Model</div>
-      </div>
     </div><!-- end tab tcalc -->
 
     <!-- TAB 4: EBM (Sections 3 + 4) -->
@@ -656,28 +860,40 @@
         Axial tilt does not change this number — tilt only redistributes this same energy across latitude and season. Head to Tab 5 (rotating) or Tab 6 (tidally locked) to see that effect.
       </div>
       <!-- Section 4: CO2 sensitivity + ice-albedo -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:420px">
-        <div id="plot-co2"></div>
-        <div id="plot-albedo"></div>
+      <div class="plot-group" id="grp-t3">
+        <div class="plot-switch">
+          <button class="ps-btn active" data-target="pane-hold" onclick="showPlotPane('grp-t3','pane-hold')">What this world can hold</button>
+          <button class="ps-btn" data-target="pane-albedo" onclick="showPlotPane('grp-t3','pane-albedo')">One climate or two?</button>
+          <button class="ps-btn" data-target="pane-co2" onclick="showPlotPane('grp-t3','pane-co2')">How sensitive is it?</button>
+        </div>
+        <div class="plot-pane active" id="pane-hold"><div id="plot-hold" style="min-height:420px"></div></div>
+        <div class="plot-pane" id="pane-albedo"><div id="plot-albedo" style="min-height:420px"></div></div>
+        <div class="plot-pane" id="pane-co2"><div id="plot-co2" style="min-height:420px"></div></div>
       </div>
       <div class="record-block" id="rec3">
         <strong>📋 Record — Sections 3–4 values to copy into your handout</strong>
         <div class="vals" id="rec3-vals"></div>
-        <div class="next-hint" id="next3"></div>
       </div>
     </div>
 
     <!-- TAB 5A: ROTATING -->
     <div class="tab-content" id="t5a">
-      <!-- Climate zones + seasonal range by latitude -->
-      <div class="plot-half" id="plot-5a"></div>
-      <div class="zone-legend" id="zone-legend"></div>
-      <!-- Seasonal Hovmoller heatmap -->
-      <div class="plot-half" id="plot-5a-hovm"></div>
+      <div class="plot-group" id="grp-t5a">
+        <div class="plot-switch">
+          <button class="ps-btn active" data-target="pane-5a" onclick="showPlotPane('grp-t5a','pane-5a')">Climate zones by latitude</button>
+          <button class="ps-btn" data-target="pane-5ahovm" onclick="showPlotPane('grp-t5a','pane-5ahovm')">Season × latitude</button>
+        </div>
+        <div class="plot-pane active" id="pane-5a">
+          <div class="plot-half" id="plot-5a"></div>
+          <div class="zone-legend" id="zone-legend"></div>
+        </div>
+        <div class="plot-pane" id="pane-5ahovm">
+          <div class="plot-half" id="plot-5a-hovm"></div>
+        </div>
+      </div>
       <div class="record-block" id="rec5a">
         <strong>📋 Record — Section 5A values to copy into your handout</strong>
         <div class="vals" id="rec5a-vals"></div>
-        <div class="next-hint" id="next5a"></div>
       </div>
     </div>
 
@@ -688,19 +904,17 @@
       <div class="record-block" id="rec5b">
         <strong>📋 Record — Section 5B values to copy into your handout</strong>
         <div class="vals" id="rec5b-vals"></div>
-        <div class="next-hint" id="next5b"></div>
       </div>
     </div>
 
     <!-- TAB 7: SUMMARY -->
     <div class="tab-content" id="t6">
-      <div style="min-height:420px">
-        <div id="plot-6b"></div>
-      </div>
+      <!-- height, not min-height: CFG sets responsive:true, so Plotly follows the
+           container and ignores layout.height entirely. -->
+      <div id="plot-6b" style="height:292px"></div>
       <div class="record-block" id="rec6">
-        <strong>📋 Record — Section 6 full climate summary (Phase 4 Environmental Audit)</strong>
+        <strong>🗂 Planetary Dossier — the conditions your organism has to survive (Phase 4 Environmental Audit)</strong>
         <div class="vals" id="rec6-vals"></div>
-        <div class="next-hint">This is your last tab — copy these values into Phase 4 of your handout.</div>
       </div>
     </div>
   </div>
@@ -725,24 +939,18 @@ if (typeof Physics === 'undefined') {
 
 const {
   stellarLuminosity, stellarTeff, stellarLifespanGyr, spectralType,
-  diffusionFrom, cloudyAlbedos, cloudLongwave,
   habitableZone, effectiveS0, tidalLockRadius, isTidallyLocked,
   magneticFieldEstimate, atmosphereThicknessLabel,
   run0dEBM, latProfileSeasonal, tidallyLockedProfile,
   climateZones, areaWeightedMean,
+  greenhouseForcingMix, gasRetention, GAS_SPECIES, JEANS_RETENTION_FACTOR,
+  thermalSpeed, surfaceProperties, atmosphereMixture, ozoneShielding,
   kepler, planetaryProperties,
   PLANET_TYPES, DENSITY_PRESETS, MODEL_RANGE, CONSTANTS,
 } = Physics;
 
 const PLANET_LABELS = Object.fromEntries(
   Object.entries(PLANET_TYPES).map(([k, v]) => [k, v.label]));
-
-// The day-length slider runs on a log scale, because the interesting range
-// spans a factor of ~17 and a linear slider would waste most of its travel
-// on day lengths nobody chooses.
-const dayFromSlider = (v) => Math.pow(10, +v);
-const sliderFromDay = (h) => Math.log10(h);
-const fmtDay = (h) => h < 10 ? h.toFixed(1) + ' h' : Math.round(h) + ' h';
 
 // Presentation helper, not physics: turn a lifespan in Gyr into a label.
 function stellarLifespan(mass) {
@@ -766,24 +974,168 @@ function seasonalExtremes(seasonal) {
 
 // ── Sidebar emphasis (interface, not physics) ──────────────────────
 // Dims the controls that are not yet relevant to the tab the student is on.
-const ALL_SIDEBAR_SECTIONS = ['sidebar-star','sidebar-age','sidebar-orbit','sidebar-climate','sidebar-rotating','sidebar-heattransport'];
+const ALL_SIDEBAR_SECTIONS = ['sidebar-star','sidebar-age','sidebar-orbit','sidebar-planet','sidebar-climate','sidebar-rotating','sidebar-heattransport'];
 const TAB_RELEVANT_SECTIONS = {
-  t1:    ['sidebar-star','sidebar-age'],
-  t2:    ['sidebar-star','sidebar-orbit'],
-  tcalc: ['sidebar-star','sidebar-orbit'],
-  t3:    ['sidebar-star','sidebar-orbit','sidebar-climate'],
-  t5a:   ['sidebar-star','sidebar-orbit','sidebar-climate','sidebar-rotating','sidebar-heattransport'],
-  t5b:   ['sidebar-star','sidebar-orbit','sidebar-climate','sidebar-heattransport'],
-  t6:    ['sidebar-star','sidebar-age','sidebar-orbit','sidebar-climate','sidebar-rotating','sidebar-heattransport'],
+  // Planet mass belongs on Tabs 1 and 2 as well: the tidal-lock radius drawn
+  // on both depends on it, so collapsing it there hid one of the inputs.
+  t1:    ['sidebar-star','sidebar-age','sidebar-planet'],
+  t2:    ['sidebar-star','sidebar-orbit','sidebar-planet'],
+  tcalc: ['sidebar-star','sidebar-orbit','sidebar-planet'],
+  t3:    ['sidebar-star','sidebar-orbit','sidebar-planet','sidebar-climate'],
+  t5a:   ['sidebar-planet','sidebar-climate','sidebar-rotating','sidebar-heattransport'],
+  t5b:   ['sidebar-planet','sidebar-climate','sidebar-heattransport'],
+  t6:    ['sidebar-star','sidebar-age','sidebar-orbit','sidebar-planet','sidebar-climate','sidebar-rotating','sidebar-heattransport'],
 };
+// Sections the student has opened or closed by hand are left alone from then
+// on -- auto-collapsing a section someone deliberately opened is the fastest
+// way to make a panel feel like it is fighting you.
+const userToggledSections = new Set();
+
+function setSectionOpen(id, open) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed', !open);
+  const hdr = el.querySelector('.section-header');
+  if (hdr) hdr.setAttribute('aria-expanded', String(open));
+}
+
+function toggleSection(id) {
+  userToggledSections.add(id);
+  const el = document.getElementById(id);
+  setSectionOpen(id, el.classList.contains('collapsed'));
+}
+
+// Wraps everything below each section header in a body element so it can be
+// collapsed, and turns the header into a real button. Done here rather than in
+// the markup so each section's contents stay where an author would expect.
+function initCollapsibleSections() {
+  ALL_SIDEBAR_SECTIONS.concat(['sidebar-keynumbers']).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('sec');
+    const hdr = el.querySelector('.section-header');
+    if (!hdr) return;
+    const body = document.createElement('div');
+    body.className = 'sec-body';
+    while (hdr.nextSibling) body.appendChild(hdr.nextSibling);
+    el.appendChild(body);
+    const chev = document.createElement('span');
+    chev.className = 'sh-chev';
+    chev.textContent = '\u25be';
+    hdr.appendChild(chev);
+    hdr.setAttribute('role', 'button');
+    hdr.setAttribute('tabindex', '0');
+    hdr.addEventListener('click', () => toggleSection(id));
+    hdr.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(id); }
+    });
+  });
+}
+
 function updateSidebarEmphasis() {
   const relevant = TAB_RELEVANT_SECTIONS[activeTab] || ALL_SIDEBAR_SECTIONS;
   ALL_SIDEBAR_SECTIONS.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (relevant.includes(id)) el.classList.remove('sidebar-dim');
-    else el.classList.add('sidebar-dim');
+    if (userToggledSections.has(id)) return;   // hands off, they chose
+    setSectionOpen(id, relevant.includes(id));
   });
+}
+
+// Renders mass -> gravity -> escape velocity -> what it holds -> and therefore
+// what the surface is like. This is the reasoning the planet-type control used
+// to leave entirely implicit.
+function renderMassChain() {
+  const el = document.getElementById('mass-chain');
+  if (!el) return;
+  const d = derive();
+  const g = planetaryProperties(d.planetMassEarth, d.density).gravityEarth;
+  const vEsc = d.retention.escapeVelocityMS / 1000;
+  const sp = Object.values(d.retention.species);
+  const keeps = sp.filter(x => x.retained).map(x => x.label);
+  const loses = sp.filter(x => !x.retained).map(x => x.label);
+
+  const wet = d.retention.species.H2O.retained;
+  const consequence = 'Surface set to <b>' + d.surface.label + '</b>: albedo ' +
+    d.albedo.toFixed(2) + ', and it stores ' +
+    (d.surface.mixedLayerM < 4 ? 'almost no heat, so it swings hard between seasons.'
+      : d.surface.mixedLayerM > 20 ? 'a great deal of heat, so its seasons are mild.'
+      : 'a moderate amount of heat.') +
+    (wet ? '' : ' \u26a0 This world cannot hold water, so an ocean here would not last.');
+
+  el.innerHTML =
+    '<div class="chain-step"><span class="ca">Mass</span><span class="cb">' +
+      d.planetMassEarth.toFixed(2) + ' M\u2295 at ' + d.density.toFixed(2) + ' g/cm\u00b3</span></div>' +
+    '<div class="chain-step"><span class="ca">\u2192 Gravity</span><span class="cb">' +
+      g.toFixed(2) + ' g</span></div>' +
+    '<div class="chain-step"><span class="ca">\u2192 Escape velocity</span><span class="cb">' +
+      vEsc.toFixed(1) + ' km/s</span></div>' +
+    '<div class="chain-step chain-keeps"><span class="ca">\u2192 Holds</span><span class="cb"><b>' +
+      (keeps.join(' ') || 'nothing') + '</b></span></div>' +
+    '<div class="chain-step chain-loses"><span class="ca">\u2192 Loses</span><span class="cb"><b>' +
+      (loses.join(' ') || 'nothing') + '</b></span></div>' +
+    '<div class="chain-so">' + consequence + '</div>';
+}
+
+// Flags an atmosphere the planet could not actually keep. Deliberately a
+// warning and not a limit: a student is allowed to build an implausible world,
+// but should be told which part of it is implausible and why.
+function renderAtmosphereWarning() {
+  const box = document.getElementById('atm-warn');
+  if (!box) return;
+  const d = derive();
+  const notes = [];
+  const mix = d.mixture;
+
+  if (!d.bulkRetained) {
+    notes.push('A ' + d.planetMassEarth.toFixed(2) + ' M\u2295 world cannot hold this air for billions of years. ' +
+      'At a mean molecular weight of ' + mix.meanMu.toFixed(1) +
+      ' it needs about ' + (JEANS_RETENTION_FACTOR * d.bulkThermal / 1000).toFixed(1) +
+      ' km/s of escape velocity and has ' + (d.retention.escapeVelocityMS / 1000).toFixed(1) +
+      ' km/s. Making it heavier \u2014 more CO\u2082, less hydrogen \u2014 or the planet more massive would hold it down.');
+  }
+  // Individual components can escape even when the bulk stays put; that is how
+  // a world ends up nitrogen-rich having started with hydrogen and water.
+  const leaking = ['H2', 'CH4', 'H2O', 'CO2', 'N2']
+    .filter(k => (mix.fractions[k] || 0) > 1e-4 && !d.retention.species[k].retained);
+  if (leaking.length && d.bulkRetained) {
+    notes.push('The bulk of this atmosphere stays, but the <b>' +
+      leaking.map(k => GAS_LABEL[k] || k).join(' and ') +
+      '</b> in it escapes. Over billions of years the mixture drifts towards the heavier gases.');
+  }
+  if (mix.fractions.H2 > 0.5 && d.bulkRetained) {
+    notes.push('More than half hydrogen, held down, makes this a <b>mini-Neptune</b> rather than a rocky world with air. There is no surface to stand on.');
+  }
+  if (state.ch4 > 100) {
+    notes.push('Methane above about 100 ppm is past the range the forcing formula was fitted to, ' +
+      'so the warming shown is <b>overstated</b>. Real methane saturates its absorption bands and ' +
+      'forms a haze that cools the surface instead \u2014 neither is in this model.');
+  }
+  if (mix.fractions.O2 > 0.01) {
+    notes.push('Free oxygen is chemically greedy: it reacts with rock and with volcanic gases and ' +
+      'vanishes within a few million years unless something keeps making it. On Earth that something ' +
+      'is photosynthesis. An oxygen-rich atmosphere is therefore a <b>claim about a biosphere</b>, ' +
+      'not just a climate setting \u2014 be ready to say what on your world is producing it.');
+  }
+  if (mix.fractions.H2 > 0.01) {
+    notes.push('Hydrogen is a real greenhouse gas in bulk, through collisions between molecules. ' +
+      'That is <b>not</b> in this model, so a hydrogen-rich world here comes out colder than it should.');
+  }
+  if (mix.renormalised) {
+    notes.push('Those amounts add up to more than a whole atmosphere, so they have been scaled back proportionally.');
+  }
+  // Thermal escape is only half the story, and Mars is the proof.
+  if (d.magField === 'None' || d.magField === 'Weak') {
+    notes.push('Escape here is only the <b>thermal</b> kind. With ' +
+      (d.magField === 'None' ? 'no magnetic field' : 'only a weak magnetic field') +
+      ' the solar wind also strips the atmosphere away, which this model does not simulate. ' +
+      'Mars keeps CO\u2082 thermally and lost it anyway, for exactly this reason.');
+  }
+  if (d.spType.startsWith('M')) {
+    notes.push('M dwarfs emit far more X-ray and ultraviolet light for their brightness than the Sun does, ' +
+      'which puffs up and strips atmospheres. This model does not include that, so it is <b>optimistic</b> here.');
+  }
+
+  box.hidden = notes.length === 0;
+  box.innerHTML = notes.map(n => '<div>\u26a0 ' + n + '</div>').join('<div style="height:6px"></div>');
 }
 
 // Plotly background rectangles for a set of climate zone bands.
@@ -821,17 +1173,58 @@ const CFG = { responsive: true, displayModeBar: false };
 //  STATE
 // ───────────────────────────────────────────────────────────────────
 let state = {
-  mass: 1.0, dist: 1.0, co2: 400, planet: 'earth',
-  obl: 23.4, ecc: 0.0, dayHours: 24, pressure: 1.0, age: 4.5
+  mass: 1.0, dist: 1.0, obl: 23.4, ecc: 0.0, diff: 0.2, age: 4.5,
+  // the planet itself, no longer a dropdown
+  pmass: 1.0, pdensity: 5.51, water: 0.5,
+  // the atmosphere, as amounts rather than a named type
+  pressure: 1.0, co2: 400, o2: 209000, h2: 0, ch4: 0,
 };
+
+// Quick picks set the sliders and then get out of the way -- the same pattern
+// the star list already uses, so the named worlds the teacher guide refers to
+// stay reachable without the controls being a menu.
+const PLANET_PRESETS = {
+  desert: { pmass: 0.107, pdensity: 3.93, water: 0.02 },
+  earth:  { pmass: 1.0,   pdensity: 5.51, water: 0.50 },
+  ocean:  { pmass: 3.0,   pdensity: 4.00, water: 0.95 },
+};
+
+const GAS_LABEL = { N2: 'nitrogen', O2: 'oxygen', CO2: 'carbon dioxide',
+                    H2: 'hydrogen', CH4: 'methane' };
+
+// A log slider whose lowest notch means "none at all" rather than "very little".
+function readLogSlider(el) {
+  const v = +el.value;
+  return v <= +el.min + 1e-9 ? 0 : Math.pow(10, v);
+}
+function fmtAmount(ppm) {
+  if (!ppm) return 'none';
+  if (ppm >= 1e4) return (ppm / 1e4).toFixed(ppm >= 1e5 ? 0 : 1) + '%';
+  if (ppm >= 10) return Math.round(ppm) + ' ppm';
+  return ppm.toFixed(1) + ' ppm';
+}
+
+// Forcing from the actual mixture. CO2 enters as a PARTIAL pressure, so the
+// same ppm in a thicker atmosphere forces harder -- which is what makes the
+// pressure and composition controls interact instead of running in parallel.
+function mixForcing(co2ppm, pressureBar) {
+  return greenhouseForcingMix({
+    pressureBar, co2Ppm: co2ppm, ch4Ppm: state.ch4,
+  }).total;
+}
 let activeTab = 't1';
 
 // ───────────────────────────────────────────────────────────────────
 //  DERIVED
 // ───────────────────────────────────────────────────────────────────
 function derive() {
-  const { mass, dist, co2, planet, obl, ecc, dayHours, pressure, age } = state;
-  const type = PLANET_TYPES[planet];
+  const { mass, dist, co2, obl, ecc, diff, pressure, age } = state;
+  // Surface properties now follow from one physical quantity, the water
+  // inventory, instead of being bundled behind a name.
+  const surface = surfaceProperties(state.water);
+  const mixture = atmosphereMixture({ co2Ppm: co2, o2Ppm: state.o2,
+                                     h2Ppm: state.h2, ch4Ppm: state.ch4 });
+  const type = { albedo: surface.albedo, massEarth: state.pmass };
 
   const lum = stellarLuminosity(mass);
   const teff = stellarTeff(mass);
@@ -848,10 +1241,16 @@ function derive() {
   const inHzOptimistic = dist >= hzOptIn && dist <= hzOptOut;
   const isLocked = dist <= lockR;
 
-  const dRel = diffusionFrom(dayHours, pressure, type.transportFactor);
-  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0,
-    surfaceAlbedo: type.surfaceAlbedo, cloudFraction: type.cloudFraction,
-    pressureBar: pressure });
+  const density = state.pdensity;
+  const retention = gasRetention({ massEarth: state.pmass, densityGcm3: density, S0 });
+  // Whether the bulk atmosphere -- at its actual mean molecular weight -- stays put.
+  const bulkThermal = thermalSpeed(mixture.meanMu, retention.exosphereK);
+  const bulkRatio = retention.escapeVelocityMS / bulkThermal;
+  const bulkRetained = bulkRatio >= JEANS_RETENTION_FACTOR;
+  const dF = mixForcing(co2, pressure);
+
+  const ebm = run0dEBM({ T0_K: 288, co2ppm: co2, S0, albedoWarm: type.albedo,
+                         pressureBar: pressure, forcingWm2: dF });
   const Teq = ebm.equilibriumC;
   const beyondValidity = ebm.outOfRange;
 
@@ -866,25 +1265,35 @@ function derive() {
   else if (obl > 54) regime = 'HIGH OBLIQUITY';
   else regime = 'STANDARD ROTATING';
 
-  return { lum, teff, hz, hzIn, hzOut, hzOptIn, hzOptOut, dRel, spType: sp.type, spTemp: sp.tempRange,
+  return { lum, teff, hz, hzIn, hzOut, hzOptIn, hzOptOut, spType: sp.type, spTemp: sp.tempRange,
            lockR, S0, inHz, inHzOptimistic, isLocked, Teq, hzMod, regime, atmLabel,
            beyondValidity, lifespanGyr, ageExceedsLifespan, magField,
-           planetMassEarth: type.massEarth };
+           planetMassEarth: state.pmass, density, retention, dF,
+           albedo: surface.albedo, surface, mixture,
+           bulkRatio, bulkRetained, bulkThermal };
 }
 
 // ───────────────────────────────────────────────────────────────────
 //  SIDEBAR UPDATE
 // ───────────────────────────────────────────────────────────────────
 function updateSidebar() {
-  const { mass, dist, co2, obl, ecc, dayHours, pressure, age } = state;
+  const { mass, dist, co2, obl, ecc, diff, pressure, age } = state;
   const d = derive();
 
   document.getElementById('lbl-mass').textContent = mass.toFixed(2);
   document.getElementById('lbl-dist').textContent = dist.toFixed(2);
-  document.getElementById('lbl-co2').textContent = co2.toFixed(0);
+  document.getElementById('lbl-co2').textContent = fmtAmount(co2);
+  document.getElementById('lbl-h2').textContent = fmtAmount(state.h2);
+  document.getElementById('lbl-o2').textContent = fmtAmount(state.o2);
+  document.getElementById('lbl-pmass').textContent =
+    (state.pmass < 0.1 ? state.pmass.toFixed(3) : state.pmass.toFixed(2)) + ' M\u2295';
+  document.getElementById('lbl-pdens').textContent = state.pdensity.toFixed(2);
+  document.getElementById('lbl-water').textContent = derive().surface.label;
+  document.getElementById('lbl-n2').textContent =
+    (derive().mixture.fractions.N2 * 100).toFixed(derive().mixture.fractions.N2 > 0.99 ? 0 : 1) + '%';
   document.getElementById('lbl-pressure').textContent = pressure.toFixed(2);
   document.getElementById('lbl-obl').textContent = obl.toFixed(1);
-  document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
+  document.getElementById('lbl-diff').textContent = diff.toFixed(2);
 
   document.getElementById('badge-type').textContent = d.spType;
   document.getElementById('badge-lum').textContent = d.lum.toFixed(3)+' L☉';
@@ -908,22 +1317,12 @@ function updateSidebar() {
   lockBadge.textContent = d.isLocked ? 'Tidally Locked ⚠' : 'Not Locked ✓';
   lockBadge.className = 'badge ' + (d.isLocked ? 'badge-yellow' : 'badge-blue');
 
-  const hintRotating = document.getElementById('hint-rotating');
-  const hintTL = document.getElementById('hint-tl');
-  const tabbtnRotating = document.getElementById('tabbtn-t5a');
-  const tabbtnTL = document.getElementById('tabbtn-t5b');
-  if (d.isLocked) {
-    hintRotating.textContent = '';
-    hintTL.textContent = ' ← yours';
-    tabbtnRotating.classList.add('tab-not-yours');
-    tabbtnTL.classList.remove('tab-not-yours');
-  } else {
-    hintRotating.textContent = ' ← yours';
-    hintTL.textContent = '';
-    tabbtnRotating.classList.remove('tab-not-yours');
-    tabbtnTL.classList.add('tab-not-yours');
-  }
+  document.getElementById('lbl-ch4').textContent = fmtAmount(state.ch4);
+  renderMassChain();
+  renderAtmosphereWarning();
+
   updateSidebarEmphasis();
+  updateTabChrome();
 
   document.getElementById('badge-flux').textContent = 'S₀ = '+d.S0.toFixed(0)+' W/m²';
 
@@ -958,7 +1357,7 @@ function plotHz() {
   const outerHz = hzAll.map(h => h.conservative[1]);
   const innerOpt = hzAll.map(h => h.optimistic[0]);
   const outerOpt = hzAll.map(h => h.optimistic[1]);
-  const lockR   = masses.map(m => tidalLockRadius(m, PLANET_TYPES[state.planet].massEarth, state.age));
+  const lockR   = masses.map(m => tidalLockRadius(m, state.pmass, state.age));
 
   const traces = [
     { x: [...innerOpt, ...outerOpt.slice().reverse()],
@@ -997,8 +1396,11 @@ function plotHz() {
     xaxis:{ title:'Orbital Distance (AU)', range:[0,3.5] },
     yaxis:{ title:'Stellar Mass (M☉)', range:[0.08,2.0] },
     shapes: lines,
-    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:10} },
-    margin:{ t:50, r:20, b:60, l:70 },
+    // Legends sat inside the drawing area on every plot in this app and
+    // covered the data. Tab 5 already put its legend underneath and reads
+    // better for it, so that is now the house rule.
+    legend:{ orientation:'h', x:0, y:-0.13, xanchor:'left', yanchor:'top', font:{size:10} },
+    margin:{ t:46, r:20, b:118, l:66 },
   }), CFG);
 
   const rec = document.getElementById('rec1-vals');
@@ -1052,9 +1454,11 @@ function plotOrbit() {
   Plotly.react('plot-orbit', traces, layout({
     title:{ text:'Orbit vs Habitable Zone', font:{size:14} },
     xaxis:{ title:'AU', range:[-maxR, maxR], scaleanchor:'y', constrain:'domain' },
+    // Every pixel of vertical margin is a pixel off the diameter of an
+    // aspect-locked plot, so this one is trimmed harder than the others.
     yaxis:{ title:'AU', range:[-maxR, maxR], constrain:'domain' },
     legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
-    margin:{ t:50, r:20, b:60, l:70 },
+    margin:{ t:34, r:16, b:44, l:54 },
   }), CFG);
 
   const rec = document.getElementById('rec2-vals');
@@ -1073,14 +1477,15 @@ function plotOrbit() {
 //  PLOT: SECTIONS 3–4 — EBM
 // ───────────────────────────────────────────────────────────────────
 function plotEBM() {
-  const { co2, planet, pressure } = state;
+  const { co2, pressure } = state;
   const d = derive();
   const S0 = d.S0;
-  const type = PLANET_TYPES[planet];
-  const alb = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction).planetary;
+  const alb = d.albedo;
+  // forcingWm2 is recomputed per CO2 value, so the sensitivity curve reflects
+  // the actual mixture -- partial pressure and methane included.
   const ebm = (T0, c, s0) => run0dEBM(
-    { T0_K: T0, co2ppm: c, S0: s0, surfaceAlbedo: type.surfaceAlbedo,
-      cloudFraction: type.cloudFraction, pressureBar: pressure }).equilibriumC;
+    { T0_K: T0, co2ppm: c, S0: s0, albedoWarm: alb, pressureBar: pressure,
+      forcingWm2: mixForcing(c, pressure) }).equilibriumC;
 
   // ── Section 4: CO₂ sensitivity ────────────────────────────────────────────
   const Teq_w = ebm(288, co2, S0);
@@ -1116,8 +1521,8 @@ function plotEBM() {
     title:{ text:'CO₂ Sensitivity', font:{size:13} },
     xaxis:{ title:'CO₂ (ppm)', type:'log' },
     yaxis:{ title:'Temperature (°C)' },
-    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:9} },
-    margin:{ t:45, r:10, b:60, l:60 },
+    legend:{ orientation:'h', x:0, y:-0.15, xanchor:'left', yanchor:'top', font:{size:10} },
+    margin:{ t:44, r:20, b:112, l:62 },
   }), CFG);
 
   // ── Section 4: Ice-albedo bifurcation ─────────────────────────────────────
@@ -1132,12 +1537,14 @@ function plotEBM() {
     { x:S_pcts, y:S_pcts.map(()=>0), mode:'lines', name:'0°C', line:{color:'#58a6ff', dash:'dash', width:1.2} },
   ];
 
+  plotRetention();
+
   Plotly.react('plot-albedo', traces_alb, layout({
-    title:{ text:'Ice-Albedo Bifurcation', font:{size:13} },
+    title:{ text:'One Stable Climate, or Two? (ice–albedo bifurcation)', font:{size:13} },
     xaxis:{ title:'Stellar flux (% of actual)' },
     yaxis:{ title:'Equilibrium Temperature (°C)' },
-    legend:{ x:0.01, y:0.99, xanchor:'left', yanchor:'top', font:{size:9} },
-    margin:{ t:45, r:10, b:60, l:60 },
+    legend:{ orientation:'h', x:0, y:-0.15, xanchor:'left', yanchor:'top', font:{size:10} },
+    margin:{ t:44, r:20, b:100, l:62 },
   }), CFG);
 
   const rec = document.getElementById('rec3-vals');
@@ -1147,20 +1554,84 @@ function plotEBM() {
     ['Two stable climates possible?', bistable ? '⚠ Yes — bistable (hysteresis)' : 'No — single stable state'],
     ['ECS (2×CO₂ warming, 280→560 ppm)', '+'+ECS.toFixed(2)+' °C'],
     ['Your CO₂ equilibrium T', d.Teq.toFixed(1)+' °C'],
+    ['Atmosphere', pressure.toFixed(2)+' bar ('+d.atmLabel.toLowerCase()+'), '+
+      Object.entries(d.mixture.fractions).filter(([,v])=>v>1e-5)
+        .sort((a,b)=>b[1]-a[1])
+        .map(([k,v])=>(GAS_LABEL[k]||k)+' '+fmtAmount(v*1e6)).join(', ')],
+    ['Mean molecular weight', d.mixture.meanMu.toFixed(1)+' — this is what decides whether it stays'],
+    ['Can this world keep it?', d.bulkRetained
+      ? '✓ Yes — escape velocity is '+d.bulkRatio.toFixed(1)+'× the molecular speed (needs '+JEANS_RETENTION_FACTOR+'×)'
+      : '⚠ No — only '+d.bulkRatio.toFixed(1)+'×, and it needs '+JEANS_RETENTION_FACTOR+'×. This atmosphere would escape.'],
+    ['Surface', d.surface.label+' — albedo '+alb.toFixed(2)+', heat storage '+d.surface.mixedLayerM.toFixed(1)+' m'],
+    ['Greenhouse forcing from your mixture', (d.dF >= 0 ? '+' : '')+d.dF.toFixed(1)+' W/m²'],
     MORE,
-    ['Planetary albedo used', alb.toFixed(2)+' ('+PLANET_LABELS[planet]+')'],
-    ['Atmospheric pressure', pressure.toFixed(2)+' bar → '+d.atmLabel.toLowerCase()+' atmosphere'],
+    ['Escape velocity', (d.retention.escapeVelocityMS/1000).toFixed(1)+' km/s (from '+d.planetMassEarth.toFixed(2)+' M⊕ at '+d.density+' g/cm³)'],
+    ['Exosphere temperature assumed', d.retention.exosphereK.toFixed(0)+' K — where escape happens, far above the surface'],
+    ['Gases that escape', Object.values(d.retention.species).filter(x=>!x.retained).map(x=>x.label).join(' ') || 'none'],
+    ['⚠ Thermal escape only', 'This counts molecules leaking away because they are hot. It does not include the solar wind stripping an unprotected atmosphere — which is how Mars lost one it could hold thermally.'],
     ['⚠ Does axial tilt change this number?', 'No — this is a GLOBAL average. Tilt redistributes the same total energy across latitude & season; it never changes the planet-wide mean. See Tab 5/6 for that effect.'],
     ['Model validity', d.beyondValidity ? ('⚠ Exceeded — try a lower-mass star or larger orbit. This model is only trustworthy roughly '+MODEL_RANGE.minC+'°C to '+MODEL_RANGE.maxC+'°C.') : '✓ Within calibrated range'],
   ]);
-  document.getElementById('next3').textContent = 'Next: \u2192 ' + (d.isLocked ? 'Tab 6 \u00b7 Tidally Locked' : 'Tab 5 \u00b7 Rotating Climate');
+}
+
+// ───────────────────────────────────────────────────────────────────
+//  PLOT: WHAT THIS WORLD CAN HOLD
+//  Tab 4 used to look like a coarser Tab 5 -- a temperature curve where
+//  Tab 5 had a better one. Its real subject is the atmosphere: which gases
+//  this planet's gravity can keep, and whether the climate that results is
+//  singly or doubly stable. Neither question appears anywhere else.
+// ───────────────────────────────────────────────────────────────────
+function plotRetention() {
+  const d = derive();
+  const r = d.retention;
+  // Lightest first, because that is the order in which worlds lose things.
+  const sp = Object.values(r.species).sort((a, b) => a.mu - b.mu);
+  const bgKey = d.mixture.dominant;
+
+  const maxRatio = Math.max(...sp.map(x => x.ratio), r.factor * 1.6);
+  const traces = [{
+    type: 'bar', orientation: 'h',
+    y: sp.map(x => x.label), x: sp.map(x => x.ratio),
+    marker: {
+      color: sp.map(x => x.retained ? 'rgba(63,185,80,0.55)' : 'rgba(248,81,73,0.45)'),
+      line: { width: 1.5, color: sp.map(x =>
+        x.key === bgKey ? '#e8962c' : (x.retained ? '#3fb950' : '#f85149')) },
+    },
+    text: sp.map(x => (x.retained ? '  keeps' : '  escapes') +
+      (x.key === bgKey ? '  \u2190 your atmosphere' : '')),
+    textposition: 'outside',
+    textfont: { size: 11, color: '#e6edf3' },
+    hovertemplate: '%{y}: escape velocity is %{x:.1f}\u00d7 the thermal speed<extra></extra>',
+    showlegend: false,
+  }];
+
+  Plotly.react('plot-hold', traces, layout({
+    title: { text: 'Which Gases This World Can Hold On To', font: { size: 13 } },
+    xaxis: {
+      title: 'Escape velocity \u00f7 molecular speed  (needs \u2265 ' + r.factor + ' to keep a gas)',
+      range: [0, maxRatio * 1.28], zeroline: false,
+    },
+    yaxis: { automargin: true },
+    shapes: [
+      { type: 'rect', x0: 0, x1: r.factor, yref: 'paper', y0: 0, y1: 1,
+        fillcolor: 'rgba(248,81,73,0.07)', line: { width: 0 }, layer: 'below' },
+      { type: 'line', x0: r.factor, x1: r.factor, yref: 'paper', y0: 0, y1: 1,
+        line: { color: '#f85149', width: 2, dash: 'dash' } },
+    ],
+    annotations: [{
+      x: r.factor, y: 1.045, yref: 'paper', xanchor: 'left',
+      text: '  escapes \u2190 | \u2192 stays for billions of years',
+      showarrow: false, font: { color: '#8b949e', size: 10.5 },
+    }],
+    margin: { t: 58, r: 30, b: 62, l: 60 },
+  }), CFG);
 }
 
 // ───────────────────────────────────────────────────────────────────
 //  PLOT: SECTION 5A — ROTATING (summer solstice + seasonal Hovmöller)
 // ───────────────────────────────────────────────────────────────────
 function plot5A() {
-  const { co2, planet, obl, dayHours, pressure } = state;
+  const { co2, obl, diff, pressure } = state;
   const d = derive();
   const S0 = d.S0;
 
@@ -1170,8 +1641,9 @@ function plot5A() {
   // -- what this tab used to do -- asks what the pole would reach if summer
   // never ended, and the answer runs away.
   const seas = latProfileSeasonal({
-    S0, co2ppm: co2, obliquityDeg: obl, planetType: planet,
-    dayHours, pressureBar: pressure,
+    S0, co2ppm: co2, obliquityDeg: obl,
+    albedo: d.albedo, dRel: diff, mixedLayerM: d.surface.mixedLayerM,
+    pressureBar: pressure, forcingWm2: d.dF,
   });
   const lats = seas.lats;
   const Tsol = seas.solsticeC;          // northern summer solstice
@@ -1268,7 +1740,7 @@ function plot5A() {
     ['Global mean temperature', seas.globalMeanC.toFixed(1)+' °C'],
     ['Equatorial annual mean', Teq.toFixed(1)+' °C'],
     ['Summer-solstice N-pole / S-pole', TpoleN.toFixed(1)+' / '+TpoleS.toFixed(1)+' °C'],
-    ['Largest seasonal swing (any latitude)', swingSeasonal.toFixed(1)+' °C — set by how much heat the surface stores ('+PLANET_LABELS[planet]+')'],
+    ['Largest seasonal swing (any latitude)', swingSeasonal.toFixed(1)+' °C — set by how much heat the surface stores ('+d.surface.label+')'],
     ['Pole–equator contrast (annual mean)', swingSpatial.toFixed(1)+' °C — this is what your Diffusion D controls'],
     ['Climate zones', bandSummary],
     MORE,
@@ -1280,9 +1752,6 @@ function plot5A() {
     ['⚠ Known limitation', 'No continents, oceans, or mountains — only latitude. Real polar caps are colder than this model shows, because ice sheets sit on high ground and land cools faster than sea.'],
     ['Map template', 'Eckert IV projection'],
   ]);
-  document.getElementById('next5a').textContent = d.isLocked
-    ? '\u26a0 Your planet is tidally locked \u2014 this tab does not apply to your planet. Use Tab 6 instead.'
-    : 'Next: \u2192 Tab 7 \u00b7 Full Summary';
   const swingBadge5a = document.getElementById('badge-swing');
   if (swingBadge5a) swingBadge5a.textContent = 'Seasonal swing: ' + swingSeasonal.toFixed(0) + ' °C';
 }
@@ -1291,18 +1760,15 @@ function plot5A() {
 //  PLOT: SECTION 5B — TIDALLY LOCKED (profile + D-sweep)
 // ───────────────────────────────────────────────────────────────────
 function plot5B() {
-  const { co2, planet, dayHours, pressure } = state;
+  const { co2, diff, pressure } = state;
   const d = derive();
   const S0 = d.S0;
-  // A locked planet's transport is NOT rotation-scaled: its rotation equals
-  // its orbital period, which would give D of 7-25 and a flat, contrast-free
-  // planet. Bounded default, scaled only by ocean circulation.
-  const lockedD = CONSTANTS.D_LOCKED_DEFAULT * PLANET_TYPES[planet].transportFactor;
-  const D_vals = [0.05, 0.2, 0.5, lockedD].sort((a,b)=>a-b);
+  const D_vals = [0.05, 0.2, 0.5, diff].sort((a,b)=>a-b);
   // Deduplicate within 0.005
   const D_dedup = [];
   D_vals.forEach(v => { if (!D_dedup.some(x=>Math.abs(x-v)<0.005)) D_dedup.push(v); });
-  const tl = (D) => tidallyLockedProfile({ S0, co2ppm: co2, planetType: planet, dRel: D, pressureBar: pressure });
+  const tl = (D) => tidallyLockedProfile({ S0, co2ppm: co2, albedo: d.albedo,
+    dRel: D, pressureBar: pressure, forcingWm2: d.dF });
 
   const palette = ['#1565C0','#3fb950','#FB8C00','#E53935','#a371f7'];
 
@@ -1312,7 +1778,7 @@ function plot5B() {
   D_dedup.forEach((D, idx) => {
     const r = tl(D);
     const angles = r.angles, temps = r.tempsC, wasClipped = r.outOfRange;
-    const isUser = Math.abs(D - lockedD) < 0.005;
+    const isUser = Math.abs(D - diff) < 0.005;
     traces.push({
       x: angles, y: temps, mode: 'lines',
       name: isUser ? `D = ${D.toFixed(2)} ← your choice` : `D = ${D.toFixed(2)}`,
@@ -1333,13 +1799,15 @@ function plot5B() {
       tickvals:[-90,-60,-30,0,30,60,90],
       ticktext:['Antistellar (−90°)','','','Terminator (0°)','','','Substellar (+90°)'] },
     yaxis:{ title:'Surface Temperature (°C)' },
-    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
-    margin:{ t:50, r:20, b:90, l:70 },
+    legend:{ orientation:'h', x:0, y:-0.16, xanchor:'left', yanchor:'top', font:{size:10} },
+    // r was 20, which clipped the right-hand "Substellar (+90 deg)" tick label
+    // clean off the plot -- the axis ends exactly at the last tick.
+    margin:{ t:46, r:76, b:124, l:70 },
   }), CFG);
 
   // ── Record block ───────────────────────────────────────────────────────────
   if (!yourAngles) {
-    yourResult = tl(lockedD);
+    yourResult = tl(diff);
     yourAngles = yourResult.angles; yourTemps = yourResult.tempsC; yourClipped = yourResult.outOfRange;
   }
   // No seasons on a locked planet, so warmest and coldest are the same profile.
@@ -1360,14 +1828,8 @@ function plot5B() {
     ['Day–night swing', daynightSwing.toFixed(1)+' °C'],
     MORE,
     ['Habitable surface fraction', (habFrac*100).toFixed(0)+'%'],
-    ['Day length', fmtDay(state.dayHours)],
-    ['Heat transport D (derived)', d.dRel.toFixed(3)+' — from day length ('+fmtDay(state.dayHours)+
-      '), pressure ('+state.pressure.toFixed(2)+' bar), and '+PLANET_LABELS[planet]+
-      ' ocean circulation (×'+PLANET_TYPES[planet].transportFactor.toFixed(1)+')'],
-    ['Cloud cover', (PLANET_TYPES[planet].cloudFraction*100).toFixed(0)+'% — reflects sunlight (cooling) and traps infrared (warming); net effect on Earth is cooling'],
-    ['Surface albedo (no clouds)', PLANET_TYPES[planet].surfaceAlbedo.toFixed(2)+
-      ' → planetary albedo '+cloudyAlbedos(PLANET_TYPES[planet].surfaceAlbedo, PLANET_TYPES[planet].cloudFraction).planetary.toFixed(2)+' with clouds'],
-    ['Eyeball Earth regime?', lockedD < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
+    ['Diffusion coefficient D', diff.toFixed(2)+' (a '+d.surface.label+' surface sets '+d.surface.dRel.toFixed(2)+' by default)'],
+    ['Eyeball Earth regime?', diff < 0.15 ? '✓ Yes (D < 0.15)' : 'No — stronger heat transport'],
     ['Climate zones (day side outward from substellar)', tlZones.bands.slice().reverse().map(b => b.label+': '+Math.abs(b.to)+'°–'+Math.abs(b.from)+'°').join(' · ')],
     ['Livable surface fraction (zones)', (tlZones.habitableFraction*100).toFixed(0)+'%'],
     ['Atmospheric collapse risk?', yourResult.atmosphericCollapseRisk ? '⚠ Yes — night side below the CO₂ frost point. The atmosphere would freeze onto the dark hemisphere, and this model stops applying.' : 'No — night side stays above the CO₂ frost point'],
@@ -1375,9 +1837,6 @@ function plot5B() {
     ['Model validity', yourClipped ? '⚠ Clipped — stellar flux too extreme for this model; try a lower-mass star or larger orbit' : '✓ Within calibrated range'],
     ['Map template', 'Polar hemispheres (day / night)'],
   ]);
-  document.getElementById('next5b').textContent = !d.isLocked
-    ? '\u26a0 Your planet is NOT tidally locked \u2014 this tab does not apply to your planet. Use Tab 5 instead.'
-    : 'Next: \u2192 Tab 7 \u00b7 Full Summary';
   const swingBadge5b = document.getElementById('badge-swing');
   if (swingBadge5b) swingBadge5b.textContent = 'Swing: ' + daynightSwing.toFixed(0) + ' °C';
 }
@@ -1386,27 +1845,28 @@ function plot5B() {
 //  PLOT: SECTION 6 — FULL SUMMARY (matches notebook Phase 4 audit)
 // ───────────────────────────────────────────────────────────────────
 function plot6() {
-  const { co2, planet, obl, ecc, dayHours, pressure, age } = state;
+  const { co2, obl, ecc, diff, pressure, age } = state;
   const d = derive();
   const S0 = d.S0;
-  const alb = cloudyAlbedos(PLANET_TYPES[planet].surfaceAlbedo, PLANET_TYPES[planet].cloudFraction).planetary;
+  const alb = d.albedo;
 
   // 0-D transient — computed for the record block only (no longer plotted)
-  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, surfaceAlbedo:PLANET_TYPES[planet].surfaceAlbedo, cloudFraction:PLANET_TYPES[planet].cloudFraction, pressureBar:pressure }).equilibriumC;
-  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, surfaceAlbedo:PLANET_TYPES[planet].surfaceAlbedo, cloudFraction:PLANET_TYPES[planet].cloudFraction, pressureBar:pressure }).equilibriumC;
+  const Teq_w = run0dEBM({ T0_K:288, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
+  const Teq_c = run0dEBM({ T0_K:215, co2ppm:co2, S0, albedoWarm:alb, pressureBar:pressure, forcingWm2:d.dF }).equilibriumC;
 
   // Spatial profile (lat or TL) for summary panel
   let xLabel, xVals, Tvals, xTickvals, xTicktext, spatialClipped, warmSeason, coldSeason, converged;
   if (d.isLocked) {
-    const r = tidallyLockedProfile({ S0, co2ppm:co2, planetType:planet, dRel: CONSTANTS.D_LOCKED_DEFAULT * PLANET_TYPES[planet].transportFactor, pressureBar:pressure });
+    const r = tidallyLockedProfile({ S0, co2ppm:co2, albedo:d.albedo, dRel:diff, pressureBar:pressure, forcingWm2:d.dF });
     xVals = r.angles; Tvals = r.tempsC; spatialClipped = r.outOfRange; converged = r.converged;
     warmSeason = Tvals; coldSeason = Tvals;   // no seasons when locked
     xLabel   = 'Position (° from terminator)';
     xTickvals = [-90,-45,0,45,90];
     xTicktext = ['Anti-stellar','','Terminator','','Sub-stellar'];
   } else {
-    const seas = latProfileSeasonal({ S0, co2ppm:co2, obliquityDeg:obl, planetType:planet,
-                                      dayHours, pressureBar:pressure });
+    const seas = latProfileSeasonal({ S0, co2ppm:co2, obliquityDeg:obl, albedo:d.albedo,
+                                      dRel:diff, mixedLayerM:d.surface.mixedLayerM,
+                                      pressureBar:pressure, forcingWm2:d.dF });
     const ext = seasonalExtremes(seas);
     xVals = seas.lats; Tvals = seas.annualMeanC; spatialClipped = seas.outOfRange; converged = seas.converged;
     warmSeason = ext.warm; coldSeason = ext.cold;
@@ -1421,36 +1881,89 @@ function plot6() {
   const Tgm      = Tvals.reduce((acc,t,i)=>acc+t*weights[i],0) / wSum;
   const habFrac  = summaryZones.habitableFraction;
 
+  // ── "Your world vs Earth" ──────────────────────────────────────────────
+  // The chart that used to sit here plotted annualMeanC from the same
+  // latProfileSeasonal() call Tab 5 already makes -- one of the three curves
+  // Tab 5 draws, minus the zone bands. It was strictly less informative than a
+  // chart the student saw two tabs earlier, so it is gone.
+  // Phase 4 asks a different question than every other tab: not "how hot, and
+  // where", but "how strange is this place, and in which direction". Dumbbells
+  // running from Earth to your value on a log axis answer exactly that, and it
+  // is the only chart in the app that is not a temperature curve.
+  const swingFull = Math.max(...Tvals) - Math.min(...Tvals);
+  const gEarth = planetaryProperties(d.planetMassEarth, d.density).gravityEarth;
+  const eb = earthBaseline();
+  const comp = [
+    { label: 'Sunlight',    v: d.S0 / eb.S0,          unit: d.S0.toFixed(0) + ' W/m²' },
+    { label: 'Gravity',     v: gEarth,                unit: gEarth.toFixed(2) + ' g' },
+    { label: 'Air pressure', v: pressure,             unit: pressure.toFixed(2) + ' bar' },
+    // The row is already labelled "Temp. spread"; repeating "across the surface"
+    // here only pushed the value label off the right edge.
+    { label: 'Temp. spread', v: swingFull / eb.spread, unit: swingFull.toFixed(0) + ' °C' },
+  ].map(r => ({ ...r, v: (isFinite(r.v) && r.v > 0) ? r.v : 0.01 }));
+
+  const compR = comp.slice().reverse();   // Plotly stacks the first y value at the bottom
+  const vs = comp.map(r => r.v);
+  const loR = Math.min(0.4, ...vs.map(v => v * 0.45));
+  const hiR = Math.max(2.8, ...vs.map(v => v * 3.2));
+  // A log axis left alone labels every minor tick (3 4 5 6 7 8 9 1 2 ...),
+  // which reads as noise. Name only ratios a student would actually say.
+  const TICKS = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 10, 50, 200];
+  const shownTicks = TICKS.filter(t => t >= loR && t <= hiR);
+  const L = Math.log10;
+
+  // Bars, not lone markers. Four dots on an empty field gave the eye nothing to
+  // measure against; a bar has length, and length is the whole point -- how far
+  // from Earth, and which way. Drawn as shapes because Plotly bars on a log axis
+  // cannot start from an arbitrary base.
+  // Plotly takes these shape x coordinates as DATA values, not log10 values,
+  // even though the axis is logarithmic. Passing log units put every bar off
+  // the left of the range except one, which drew in the wrong place.
+  const bars = compR.map((r, i) => ({
+    type: 'rect', x0: 1, x1: r.v, y0: i - 0.3, y1: i + 0.3,
+    fillcolor: r.v >= 1 ? 'rgba(232,150,44,0.42)' : 'rgba(57,208,247,0.34)',
+    line: { color: r.v >= 1 ? '#e8962c' : '#39d0f7', width: 1 },
+    layer: 'below',
+  }));
+
   Plotly.react('plot-6b', [
-    { x:xVals, y:Tvals, mode:'lines',
-      name: d.isLocked ? 'Day–Night Temperature' : 'Annual Mean Temperature',
-      line:{color:'#58a6ff', width:2.5} },
-    { x:[xVals[0],xVals[xVals.length-1]], y:[-10,-10], mode:'lines', name:'Ice threshold (−10°C)',
-      line:{color:'#1565C0',dash:'dot',width:1.5} },
-    { x:[xVals[0],xVals[xVals.length-1]], y:[100,100], mode:'lines', name:'Boiling (100°C)',
-      line:{color:'#f85149',dash:'dot',width:1.5} },
-    { x:[xVals[0],xVals[xVals.length-1]], y:[Tgm,Tgm], mode:'lines',
-      name:`Mean = ${Tgm.toFixed(1)} °C`,
-      line:{color:'#e6edf3',dash:'dash',width:1.5} },
-    { x:[...xVals.filter((x,i)=>Tvals[i]>-10 && Tvals[i]<100),
-          ...xVals.filter((x,i)=>Tvals[i]>-10 && Tvals[i]<100).slice().reverse()],
-      y:[...Tvals.filter(t=>t>-10&&t<100),
-          ...Tvals.filter(t=>t>-10&&t<100).map(()=>-10)],
-      fill:'toself', fillcolor:'rgba(63,185,80,0.1)', mode:'none',
-      name:'Liquid water zone' },
-    ...(d.isLocked ? [{ x:[0,0], y:[-100,200], mode:'lines', name:'Terminator',
-      line:{color:'#8b949e',dash:'dash',width:1} }] : []),
+    { x: compR.map(r => r.v), y: compR.map(r => r.label), mode: 'markers+text',
+      // Circles, not ticks: when a value sits exactly on Earth its bar has zero
+      // length, and a bare tick then looks like a rendering failure.
+      marker: { size: 11, color: compR.map(r => r.v >= 1 ? '#e8962c' : '#39d0f7'),
+                line: { color: '#0d1117', width: 2 } },
+      text: compR.map(r => '  ' + fmtRatio(r.v) + ' Earth  ·  ' + r.unit),
+      textposition: 'middle right',
+      textfont: { color: '#e6edf3', size: 11.5 },
+      hovertemplate: '%{y}: %{x:.2f}× Earth<extra></extra>', showlegend: false },
   ], layout({
-    title:{ text: d.isLocked ? 'TL Day–Night Profile' : 'Annual Mean Latitude Profile', font:{size:13} },
-    xaxis:{ title:xLabel, tickvals:xTickvals, ticktext:xTicktext },
-    yaxis:{ title:'Temperature (°C)' },
-    legend:{ x:1.0, y:1.0, xanchor:'right', yanchor:'top', font:{size:10} },
-    margin:{ t:45, r:10, b:90, l:65 },
+    title: { text: 'Your World Compared With Earth', font: { size: 13 } },
+    // Shapes and annotations take LOG units on a log axis; traces do not.
+    xaxis: { title: '× Earth (log scale) — shaded band is within 2× of Earth', type: 'log',
+             range: [L(loR), L(hiR)], zeroline: false,
+             tickmode: 'array', tickvals: shownTicks,
+             ticktext: shownTicks.map(t => t === 1 ? 'Earth' : fmtRatio(t)),
+             gridcolor: '#21262d' },
+    yaxis: { automargin: true, gridcolor: 'rgba(0,0,0,0)' },
+    shapes: [
+      { type: 'rect', x0: 0.5, x1: 2, yref: 'paper', y0: 0, y1: 1,
+        fillcolor: 'rgba(63,185,80,0.07)', line: { width: 0 }, layer: 'below' },
+      ...bars,
+      { type: 'line', x0: 1, x1: 1, yref: 'paper', y0: 0, y1: 1,
+        line: { color: '#3fb950', width: 2 } },
+    ],
+    // Four rows need about this much and no more. Left to size itself the plot
+     // padded ~100px of empty black below the axis title.
+    height: 292,
+    margin: { t: 44, r: 44, b: 58, l: 96 },
+    annotations: comp.every(r => Math.abs(L(r.v)) < 0.04) ? [{
+      x: 0.98, xref: 'paper', y: 0.5, yref: 'paper', xanchor: 'right',
+      text: 'Every value matches Earth —<br>you have rebuilt Earth.',
+      showarrow: false, align: 'right',
+      font: { color: '#3fb950', size: 11.5 },
+    }] : [],
   }), CFG);
 
-  // Gravity estimate from planet type (from notebook)
-  const g_label = planet === 'ocean' ? '~1.2× Earth (dense ocean world)' :
-                  planet === 'desert' ? '~0.9× Earth (less dense rocky)' : '~1.0× Earth (comparable)';
   const bistable   = Math.abs(Teq_w - Teq_c) > 5;
   const habitability = habFrac > 0.1 ? (Teq_w < 80 ? '✓ Potentially habitable' : '⚠ Too hot globally') :
                        '⚠ Mostly frozen (possible snowball)';
@@ -1465,37 +1978,105 @@ function plot6() {
   const T_poleNorth = d.isLocked ? null : Tvals[Tvals.length-1];
   const maxSeasonalSwing = Math.max(...xVals.map((_, i) => warmSeason[i] - coldSeason[i]));
 
-  const swingFull = Math.max(...Tvals) - Math.min(...Tvals);
   const rec = document.getElementById('rec6-vals');
-  rec.innerHTML = record([
-    ['Climate regime', d.regime],
-    ['Stellar flux (S₀)', d.S0.toFixed(1)+' W/m²'],
-    ['Spatial mean T (profile)', Tgm.toFixed(1)+' °C'],
+  const zoneNames = summaryZones.bands.map(b => b.label).filter((v,i,a) => a.indexOf(v)===i);
+  const isM = d.spType.startsWith('M');
+  // Spectral classes are read as letter NAMES, so the article follows how the
+  // letter is said: "an M-type" (em), "a G-type" (gee).
+  const artc = /^[AEFHILMNORSX]/.test(d.spType) ? 'An' : 'A';
+
+  // Each group leads with what the number MEANS for an organism, because a
+  // student reading this later is designing a body, not auditing a model.
+  const gravityLine = gEarth > 1.25
+    ? 'A body here has to be low and strongly built. Falling is dangerous, and flight is expensive.'
+    : gEarth < 0.8
+    ? 'Limbs can run long and slender here, and flight or long jumps come cheaply.'
+    : 'An Earth-like build works here without special adaptation.';
+
+  const airLine = d.atmLabel === 'Thick'
+    ? 'Pressure that high rules out gas-filled cavities near the surface, and it blocks UV well.'
+    : d.atmLabel === 'Thin'
+    ? 'Thin air means little UV shielding and water that boils easily. Breathing surfaces have to be large.'
+    : 'Air pressure is in the range Earth life is built for.';
+
+  const lightLine = d.isLocked
+    ? 'One hemisphere is in permanent daylight and the other in permanent night, with a fixed ring of twilight between them. Nothing here has a day-night rhythm to evolve around.'
+    : obl > 54
+    ? 'This tilt is extreme enough that the poles get hotter than the equator in summer. Seasons, not latitude, are the harsher constraint.'
+    : 'A normal day-night cycle and ordinary seasons, so rhythms and cold-season strategies both make sense here.';
+
+  const liveLine = habFrac > 0.6
+    ? 'Most of this world is livable, so an organism can be a generalist rather than a specialist.'
+    : habFrac > 0.1
+    ? 'Only part of the surface is livable, so where your organism lives is a real choice you have to defend.'
+    : 'Almost nothing here stays liquid. Life would have to be underground, under ice, or around internal heat.';
+
+  const fieldLine = d.magField === 'None'
+    ? 'With no field, stellar particles reach the ground. Life needs to be underground, underwater, or heavily shielded.'
+    : d.magField === 'Weak'
+    ? 'A weak field leaves real surface radiation. Expect shielding, repair, or a nocturnal habit.'
+    : 'A strong field shields the surface roughly as Earth\'s does.';
+
+  rec.innerHTML = dossier([
+    { h: 'Body &amp; movement',
+      lead: 'Surface gravity is <b>' + gEarth.toFixed(2) + '\u00d7 Earth</b>. ' + gravityLine,
+      vals: [
+        ['Surface', d.surface.label],
+        ['Mass and density', d.planetMassEarth.toFixed(2) + ' M\u2295 at ' + d.density.toFixed(2) + ' g/cm\u00b3 \u2014 both your choice'],
+        ['Surface gravity', gEarth.toFixed(2) + ' g'],
+      ] },
+    { h: 'Air &amp; warmth',
+      lead: 'A <b>' + d.atmLabel.toLowerCase() + '</b> atmosphere at ' + pressure.toFixed(2) +
+            ' bar, averaging <b>' + Tgm.toFixed(1) + ' \u00b0C</b>. ' + airLine,
+      vals: [
+        ['Pressure', pressure.toFixed(2) + ' bar \u2014 ' + d.atmLabel],
+        ['CO\u2082', co2 + ' ppm'],
+        ['Mean surface temperature', Tgm.toFixed(1) + ' \u00b0C'],
+      ] },
+    { h: 'Light &amp; time',
+      lead: artc + ' <b>' + d.spType + '</b> star delivering <b>' + fmtRatio(d.S0 / eb.S0) +
+            '</b> Earth\u2019s sunlight. ' + lightLine,
+      vals: [
+        ['Stellar flux', d.S0.toFixed(0) + ' W/m\u00b2'],
+        ['Climate regime', d.regime],
+        d.isLocked ? ['Axial tilt', 'Not applicable \u2014 tidally locked']
+                   : ['Axial tilt', obl.toFixed(1) + '\u00b0'],
+      ] },
+    { h: 'Where life can live',
+      lead: '<b>' + (habFrac*100).toFixed(0) + '%</b> of the surface stays between \u221210 \u00b0C and 100 \u00b0C. ' + liveLine,
+      vals: [
+        ['Livable fraction', (habFrac*100).toFixed(0) + '%'],
+        ['Temperature spread', swingFull.toFixed(1) + ' \u00b0C across the surface'],
+        ['Climate zones', zoneNames.join(' \u00b7 ') || '\u2014'],
+        ['Map template', d.isLocked ? 'Polar hemispheres (day / night)' : 'Eckert IV'],
+      ] },
+    { h: 'Hazards &amp; protection',
+      lead: 'Magnetic field: <b>' + d.magField + '</b>. ' + fieldLine +
+            ' Ultraviolet shielding: <b>' + d.mixture.ozone.label + '</b>. ' + d.mixture.ozone.note +
+            (isM ? ' This is an M dwarf, so flares are an additional, episodic hazard the model does not simulate.' : ''),
+      vals: [
+        ['Magnetic field', d.magField + (d.isLocked ? ' (tidal lock reduces field organisation)' : '')],
+        ['Oxygen / ozone shielding', fmtAmount(d.mixture.fractions.O2 * 1e6) + ' O\u2082 \u2014 ' + d.mixture.ozone.label + ' UV shielding'],
+        ['System age', age.toFixed(1) + ' Gyr' + (d.ageExceedsLifespan ? ' \u2014 \u26a0 older than the star' : '')],
+        ['In habitable zone?', d.inHz ? '\u2713 Yes' : '\u2717 No'],
+      ] },
+  ]) + moreValues([
+    ['Habitability flag', habitability],
+    ['0-D equilibrium T (warm start)', Teq_w.toFixed(1) + ' \u00b0C'],
+    ['0-D equilibrium T (frozen start)', Teq_c.toFixed(1) + ' \u00b0C'],
+    ['Two stable climates?', bistable ? '\u26a0 Yes \u2014 bistable (hysteresis)' : 'No'],
     d.isLocked
       ? ['Substellar / Terminator / Antistellar T',
-          Tvals[Tvals.length-1].toFixed(1)+' / '+T_equator.toFixed(1)+' / '+Tvals[0].toFixed(1)+' °C']
+          Tvals[Tvals.length-1].toFixed(1)+' / '+Tvals[Math.round(Tvals.length/2)].toFixed(1)+' / '+Tvals[0].toFixed(1)+' \u00b0C']
       : ['Equatorial / S-pole / N-pole T (annual mean)',
-          T_equator.toFixed(1)+' / '+T_poleSouth.toFixed(1)+' / '+T_poleNorth.toFixed(1)+' °C'],
-    ['Temperature swing (spatial)', swingFull.toFixed(1)+' °C — driven by tilt/lock geometry + heat transport, not by the global mean above'],
-    ['Livable surface fraction', (habFrac*100).toFixed(0)+'%'],
-    ['In habitable zone?', d.inHz ? '✓ Yes' : '✗ No'],
-    ['Habitability flag', habitability],
-    MORE,
-    ['0-D equilibrium T (warm start)', Teq_w.toFixed(1)+' °C'],
-    ['0-D equilibrium T (frozen start)', Teq_c.toFixed(1)+' °C'],
-    ['Two stable climates?', bistable ? '⚠ Yes — bistable (hysteresis)' : 'No'],
-    ['Climate zones', summaryZones.bands.map(b => b.label).filter((v,i,a) => a.indexOf(v)===i).join(' · ')],
+          Tvals[Math.round(Tvals.length/2)].toFixed(1)+' / '+Tvals[0].toFixed(1)+' / '+Tvals[Tvals.length-1].toFixed(1)+' \u00b0C'],
     d.isLocked
-      ? ['Seasonal swing', 'None — a tidally locked planet has no seasons']
-      : ['Largest seasonal swing', maxSeasonalSwing.toFixed(1)+' °C — set by surface heat storage'],
-    ['Assumed planet mass', d.planetMassEarth.toFixed(1)+' M⊕ (representative for '+PLANET_LABELS[planet]+'; used for the dynamo and locking estimates)'],
-    ['Gravity estimate', g_label],
-    ['Atmospheric pressure / thickness', pressure.toFixed(2)+' bar — '+d.atmLabel],
-    ['System age', age.toFixed(1)+' Gyr'+(d.ageExceedsLifespan ? ' — ⚠ exceeds this star\'s ~'+d.lifespanGyr.toFixed(1)+' Gyr lifespan' : '')],
-    ['Magnetic field (simplified estimate)', d.magField + (d.isLocked ? ' (tidal lock reduces field organization)' : '')],
-    ['Solution converged?', converged ? '✓ Yes' : '⚠ No — treat these numbers as provisional'],
-    ['Model validity', (d.beyondValidity || spatialClipped) ? '⚠ Exceeded — reduce stellar flux (lower star mass or larger orbit) for physically meaningful results' : '✓ Within calibrated range'],
-    ['Map template', d.isLocked ? 'Polar hemispheres' : 'Eckert IV'],
+      ? ['Seasonal swing', 'None \u2014 a tidally locked planet has no seasons']
+      : ['Largest seasonal swing', maxSeasonalSwing.toFixed(1) + ' \u00b0C \u2014 set by surface heat storage'],
+    ['Star lifespan', '~' + d.lifespanGyr.toFixed(1) + ' Gyr'],
+    ['Earth reference (same model)', eb.S0.toFixed(0) + ' W/m\u00b2, ' + eb.spread.toFixed(0) + ' \u00b0C spread'],
+    ['Solution converged?', converged ? '\u2713 Yes' : '\u26a0 No \u2014 treat these numbers as provisional'],
+    ['Model validity', (d.beyondValidity || spatialClipped) ? '\u26a0 Exceeded \u2014 reduce stellar flux (lower star mass or larger orbit) for physically meaningful results' : '\u2713 Within calibrated range'],
   ]);
 }
 
@@ -1510,10 +2091,40 @@ function linspace(a, b, n) {
 function logspace(a, b, n) {
   return linspace(a, b, n).map(x => Math.pow(10, x));
 }
-// A record block with the handful of values a student copies into the
-// handout up top, and everything else folded into a disclosure. Same
-// information, a fraction of the vertical space. Pass the rows to keep
-// visible first; anything after the divider marker goes inside.
+// Earth run through THIS model, not Earth's textbook values, so the comparison
+// is like-for-like: any bias in the physics cancels out of the ratio instead of
+// showing up as a difference between the student's world and Earth.
+let _earthBaseline = null;
+function earthBaseline() {
+  if (_earthBaseline) return _earthBaseline;
+  const S0 = effectiveS0(1.0, 1.0);
+  const seas = latProfileSeasonal({ S0, co2ppm: 400, obliquityDeg: 23.4,
+    planetType: 'earth', dRel: PLANET_TYPES.earth.defaultD, pressureBar: 1.0 });
+  _earthBaseline = { S0, spread: Math.max(...seas.annualMeanC) - Math.min(...seas.annualMeanC) };
+  return _earthBaseline;
+}
+
+function fmtRatio(v) {
+  if (!isFinite(v) || v <= 0) return '—';
+  return (v >= 10 ? v.toFixed(0) : v >= 0.1 ? v.toFixed(2) : v.toPrecision(2)) + '\u00d7';
+}
+
+function dossier(sections) {
+  return '<div class="dossier">' + sections.map(sec =>
+    '<section class="dsec"><h4>' + sec.h + '</h4>' +
+    '<p class="dsec-lead">' + sec.lead + '</p>' +
+    '<div class="dsec-vals">' + kv(sec.vals) + '</div></section>').join('') + '</div>';
+}
+
+function moreValues(pairs) {
+  return '<details class="rec-more"><summary>' + pairs.length +
+    ' more values, model notes &amp; caveats</summary>' +
+    '<div class="rec-more-body">' + kv(pairs) + '</div></details>';
+}
+
+// A record block with the handful of values a student copies into the handout
+// up top, and everything else folded into a disclosure: same information, a
+// fraction of the vertical space. Rows before the marker stay visible.
 const MORE = Symbol('more');
 function record(pairs) {
   const cut = pairs.indexOf(MORE);
@@ -1535,20 +2146,224 @@ function kv(pairs) {
 // ───────────────────────────────────────────────────────────────────
 //  TAB ROUTING
 // ───────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────
+//  WAYFINDING
+//  The handout and teacher guide address these panes as "Tab 1".."Tab 7",
+//  so the numbering and the Record-block contract are fixed. What changes
+//  is only how a student is told where they are and where to go next.
+// ───────────────────────────────────────────────────────────────────
+const TAB_LABELS = {
+  t1: '1 · Star', t2: '2 · Orbit', tcalc: '3 · Orbital Calculators',
+  t3: '4 · Energy Balance Model', t5a: '5 · Rotating Climate',
+  t5b: '6 · Tidally Locked', t6: '7 · Full Summary',
+};
+const TAB_META = {
+  t1:    { phase: 'Phase 1 · Step 1', task: 'Pick your star, then read its habitable zone and tidal-lock radius off the chart.' },
+  t2:    { phase: 'Phase 1 · Step 2', task: 'Move your planet\u2019s orbit and watch where it lands relative to the green habitable zone.' },
+  tcalc: { phase: 'Phase 1 · Step 3', task: 'Work out your orbital period, or your planet\u2019s radius and surface gravity.' },
+  t3:    { phase: 'Phase 2 · Step 1', task: 'Work out what atmosphere this world can actually keep \u2014 then whether the climate that produces has one stable state or two.' },
+  t5a:   { phase: 'Phase 3',          task: 'Read how temperature changes with latitude. Where your curve crosses a dotted line is a zone boundary on your map.' },
+  t5b:   { phase: 'Phase 3',          task: 'Read how temperature changes from the substellar point out to the night side.' },
+  t6:    { phase: 'Phase 4 · Step 1', task: 'Your finished world, grouped by what each condition forces your organism to deal with.' },
+};
+const visited = new Set(['t1']);
+
+// Only one of Tabs 5 and 6 applies to any given planet, so the running order
+// depends on lock status -- Next skips the one that is not yours rather than
+// walking students into a tab that does not describe their world.
+function tabOrder() {
+  return ['t1', 't2', 'tcalc', 't3', derive().isLocked ? 't5b' : 't5a', 't6'];
+}
+
+function initTabChrome() {
+  RECORD_DRAWER_TABS.forEach(id => {
+    const rec = document.querySelector('#' + id + ' .record-block[id^="rec"]');
+    if (!rec) return;
+    rec.classList.add('record-drawer');
+    rec.setAttribute('role', 'dialog');
+    rec.setAttribute('aria-label', 'Values to record for this step');
+    const close = document.createElement('button');
+    close.className = 'dock-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close record panel');
+    close.textContent = '\u2715';
+    close.addEventListener('click', () => toggleRecordDock(false));
+    rec.appendChild(close);
+  });
+
+  Object.keys(TAB_META).forEach(id => {
+    const pane = document.getElementById(id);
+    if (!pane) return;
+    const strip = document.createElement('div');
+    strip.className = 'task-strip';
+    strip.id = 'strip-' + id;
+    pane.insertBefore(strip, pane.firstChild);
+    const nav = document.createElement('div');
+    nav.className = 'tab-nav';
+    nav.id = 'nav-' + id;
+    pane.appendChild(nav);
+  });
+}
+
+// The stepper replaced the tab row outright. It can say what tabs structurally
+// could not -- that these run in order, that you are here, and that one Phase 3
+// step is not yours -- so keeping both was keeping two answers to one question.
+const STEP_LABELS = {
+  t1: 'Star', t2: 'Orbit', tcalc: 'Calculators', t3: 'Energy Balance',
+  t5a: 'Rotating', t5b: 'Tidally Locked', t6: 'Summary',
+};
+const ALL_TABS = ['t1','t2','tcalc','t3','t5a','t5b','t6'];
+
+function renderStepper() {
+  const order = tabOrder();
+  const el = document.getElementById('stepper');
+  if (!el) return;
+  el.innerHTML = ALL_TABS.map((id, i) => {
+    const applies = order.includes(id);
+    const cls = [
+      'step',
+      id === activeTab ? 'current' : '',
+      visited.has(id) && id !== activeTab ? 'done' : '',
+      applies ? '' : 'skipped',
+    ].filter(Boolean).join(' ');
+    const title = applies ? STEP_LABELS[id] : STEP_LABELS[id] + ' — not your planet';
+    return '<li><button class="' + cls + '" data-step="' + id + '" title="' + title + '">' +
+           '<span class="step-num">' + (i + 1) + '</span>' +
+           '<span class="step-lbl">' + STEP_LABELS[id] + '</span></button></li>';
+  }).join('');
+  // <li> wrappers would break the flex row, so let the buttons be the flex items.
+  el.querySelectorAll('li').forEach(li => li.replaceWith(li.firstElementChild));
+  el.querySelectorAll('.step').forEach(b =>
+    b.addEventListener('click', () => showTab(b.dataset.step)));
+
+  // The drawer starts below the sticky stepper so it never covers the way out
+  // of the step. Measured here rather than at init, where the <ol> was still
+  // empty and reported only its own padding.
+  document.documentElement.style.setProperty('--stepper-h',
+    Math.round(el.getBoundingClientRect().height) + 'px');
+}
+
+// Plotly cannot size a plot inside a display:none container, so whichever pane
+// is revealed gets a resize once it actually has a width.
+function resizeVisiblePlots(root) {
+  if (!window.Plotly) return;
+  (root || document).querySelectorAll('.plot-pane.active .js-plotly-plot')
+    .forEach(el => { if (el.offsetWidth) Plotly.Plots.resize(el); });
+}
+
+function showPlotPane(groupId, paneId) {
+  const group = document.getElementById(groupId);
+  if (!group) return;
+  group.querySelectorAll('.plot-pane').forEach(p => p.classList.toggle('active', p.id === paneId));
+  group.querySelectorAll('.ps-btn').forEach(b => b.classList.toggle('active', b.dataset.target === paneId));
+  resizeVisiblePlots(group);
+}
+
+// Tabs whose Record panel is a tall list of values that would otherwise sit far
+// below the fold. Tab 2's panel already sits beside its plot and Tab 7's dossier
+// is a wide grid that IS the tab, so neither becomes a drawer -- the button
+// appears exactly where you would otherwise have had to scroll.
+const RECORD_DRAWER_TABS = ['t1', 't3', 't5a', 't5b'];
+let recordOpen = false;
+
+function applyRecordDock() {
+  document.querySelectorAll('.record-drawer')
+    .forEach(el => el.classList.toggle('open', recordOpen));
+}
+
+function toggleRecordDock(force) {
+  recordOpen = (force === undefined) ? !recordOpen : force;
+  applyRecordDock();
+  const strip = document.getElementById('strip-' + activeTab);
+  const btn = strip && strip.querySelector('.ts-jump');
+  if (btn) btn.innerHTML = recordOpen ? '\u2715 Hide record' : '\ud83d\udccb Record';
+  if (recordOpen) {
+    const close = document.querySelector('#' + activeTab + ' .record-drawer .dock-close');
+    if (close) close.focus();
+  } else if (btn) {
+    btn.focus();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && recordOpen) { e.preventDefault(); toggleRecordDock(false); }
+});
+
+function jumpToRecord(id) {
+  const el = document.querySelector('#' + id + ' .record-block[id^="rec"]');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function navButton(target, kind) {
+  const label = TAB_LABELS[target];
+  if (kind === 'back') {
+    return '<button class="nav-btn" onclick="showTab(\'' + target + '\')">' +
+           '\u2190 <span class="nb-sub">Back to ' + label + '</span></button>';
+  }
+  return '<button class="nav-btn primary" onclick="showTab(\'' + target + '\')">' +
+         'Next: ' + label + ' \u2192</button>';
+}
+
+function updateTabChrome() {
+  renderStepper();
+
+  const id = activeTab;
+  const meta = TAB_META[id];
+  if (!meta) return;
+  const order   = tabOrder();
+  const idx     = order.indexOf(id);
+  const applies = idx >= 0;
+
+  const strip = document.getElementById('strip-' + id);
+  if (strip) {
+    const other = id === 't5a' ? 't5b' : 't5a';
+    strip.className = 'task-strip' + (applies ? '' : ' na');
+    strip.innerHTML = '<span class="ts-phase">' + meta.phase + '</span><span>' +
+      (applies ? meta.task
+               : 'Your planet is ' + (id === 't5a' ? '' : 'not ') +
+                 'tidally locked, so this tab is not the one for your world \u2014 use Tab ' +
+                 TAB_LABELS[other] + ' instead.') +
+      '</span>';
+    if (RECORD_DRAWER_TABS.includes(id)) {
+      strip.innerHTML += '<span class="ts-sp"></span>' +
+        '<button class="ts-jump" onclick="toggleRecordDock()">' +
+        (recordOpen ? '\u2715 Hide record' : '\ud83d\udccb Record') + '</button>';
+    } else if (id === 't6') {
+      strip.innerHTML += '<span class="ts-sp"></span>' +
+        '<button class="ts-jump" onclick="jumpToRecord(\'t6\')">\ud83d\uddc2 Dossier \u2193</button>';
+    }
+  }
+
+  // A tab that does not apply still needs a way out: bracket it between the
+  // tab before the Phase 3 branch and the tab after it.
+  const prev = applies ? (idx > 0 ? order[idx - 1] : null) : 't3';
+  const next = applies ? (idx < order.length - 1 ? order[idx + 1] : null) : 't6';
+
+  applyRecordDock();
+
+  const nav = document.getElementById('nav-' + id);
+  if (nav) {
+    nav.innerHTML =
+      (prev ? navButton(prev, 'back') : '<span></span>') +
+      '<span class="spacer"></span>' +
+      (next ? navButton(next, 'next')
+            : '<span class="nb-sub" style="color:var(--muted)">Last tab \u2014 copy these values into Phase 4 of your handout.</span>');
+  }
+}
+
 function showTab(id) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  document.querySelectorAll('.tab').forEach((el, i) => {
-    const tabs = ['t1','t2','tcalc','t3','t5a','t5b','t6'];
-    if (tabs[i] === id) el.classList.add('active');
-  });
+  visited.add(id);
   activeTab = id;
+  window.scrollTo(0, 0);   // the page scrolls now; land at the top of the new tab
   renderActive();
 }
 
 function renderActive() {
   updateSidebar();
+  // A plot drawn while its pane was hidden came out at Plotly's fallback width.
+  requestAnimationFrame(() => resizeVisiblePlots());
   if      (activeTab === 't1')    plotHz();
   else if (activeTab === 't2')    plotOrbit();
   else if (activeTab === 'tcalc') {} // static calculators, no plot needed
@@ -1578,7 +2393,7 @@ document.getElementById('sl-dist').addEventListener('input', e => {
   state.dist = +e.target.value; renderActive();
 });
 document.getElementById('sl-co2').addEventListener('input', e => {
-  state.co2 = +e.target.value; renderActive();
+  state.co2 = readLogSlider(e.target); renderActive();
 });
 document.getElementById('sl-pressure').addEventListener('input', e => {
   state.pressure = +e.target.value; renderActive();
@@ -1586,24 +2401,56 @@ document.getElementById('sl-pressure').addEventListener('input', e => {
 document.getElementById('sl-age').addEventListener('input', e => {
   state.age = +e.target.value; renderActive();
 });
+// Quick pick writes into the sliders; the sliders are the state.
 document.getElementById('sel-planet').addEventListener('change', e => {
-  state.planet = e.target.value;
-  // Reset heat transport to a sensible default for this world type —
-  // this is what actually ties "ocean vs desert" to smaller/bigger swings.
-  // Planet type no longer sets heat transport; it sets surface albedo,
-  // cloud cover, heat storage, and an ocean-circulation factor. Transport
-  // comes from day length and pressure.
+  const preset = PLANET_PRESETS[e.target.value];
+  if (!preset) return;
+  Object.assign(state, preset);
+  syncPlanetControls();
   renderActive();
+});
+
+function syncPlanetControls() {
+  document.getElementById('sl-pmass').value = Math.log10(state.pmass);
+  document.getElementById('sl-pdens').value = state.pdensity;
+  document.getElementById('sl-water').value = state.water;
+  // Heat transport follows the water inventory, which is what actually ties
+  // "ocean versus desert" to smaller or bigger swings. Still overridable.
+  state.diff = surfaceProperties(state.water).dRel;
+  document.getElementById('sl-diff').value = state.diff;
+}
+
+document.getElementById('sl-pmass').addEventListener('input', e => {
+  state.pmass = Math.pow(10, +e.target.value);
+  document.getElementById('sel-planet').value = '';
+  renderActive();
+});
+document.getElementById('sl-pdens').addEventListener('input', e => {
+  state.pdensity = +e.target.value;
+  document.getElementById('sel-planet').value = '';
+  renderActive();
+});
+document.getElementById('sl-water').addEventListener('input', e => {
+  state.water = +e.target.value;
+  state.diff = surfaceProperties(state.water).dRel;
+  document.getElementById('sl-diff').value = state.diff;
+  document.getElementById('sel-planet').value = '';
+  renderActive();
+});
+document.getElementById('sl-h2').addEventListener('input', e => {
+  state.h2 = readLogSlider(e.target); renderActive();
+});
+document.getElementById('sl-o2').addEventListener('input', e => {
+  state.o2 = readLogSlider(e.target); renderActive();
 });
 document.getElementById('sl-obl').addEventListener('input', e => {
   state.obl = +e.target.value; renderActive();
 });
-document.getElementById('sl-day').value = sliderFromDay(state.dayHours);
-document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
-document.getElementById('sl-day').addEventListener('input', e => {
-  state.dayHours = dayFromSlider(e.target.value);
-  document.getElementById('lbl-day').textContent = fmtDay(state.dayHours);
-  renderActive();
+document.getElementById('sl-ch4').addEventListener('input', e => {
+  state.ch4 = readLogSlider(e.target); renderActive();
+});
+document.getElementById('sl-diff').addEventListener('input', e => {
+  state.diff = +e.target.value; renderActive();
 });
 
 // ───────────────────────────────────────────────────────────────────
@@ -1727,6 +2574,9 @@ document.querySelectorAll('.pfield').forEach(inp => {
 // ───────────────────────────────────────────────────────────────────
 //  INIT
 // ───────────────────────────────────────────────────────────────────
+initCollapsibleSections();
+initTabChrome();
+syncPlanetControls();
 renderActive();
 </script>
 </body>

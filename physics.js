@@ -38,16 +38,13 @@
     G_GRAV: 6.674e-11,     // m^3 kg^-1 s^-2
     G_EARTH: 9.807,        // m/s^2
     SEC_PER_YEAR: 3.1557e7,
+    K_BOLTZ: 1.380649e-23, // J/K
+    AMU: 1.66054e-27,      // kg
 
     // --- Linearised outgoing longwave radiation: OLR = A + B*T(degC) ---
     // [FIT] Budyko/Sellers-type fit. Valid only near Earth-like
     // temperatures; see MODEL_RANGE below.
-    //
-    // A_OLR CHANGED from 210.0 when clouds became explicit. The old value
-    // was tuned to an atmosphere with Earth's cloud deck already baked into
-    // it. Now that cloud longwave trapping is a separate term, the
-    // clear-sky part has to be correspondingly larger.
-    A_OLR: 236.3,          // W/m^2
+    A_OLR: 210.0,          // W/m^2
     B_OLR: 2.0,            // W/m^2/K
 
     // --- Greenhouse forcing ---
@@ -57,23 +54,9 @@
     P_REF: 1.0,            // bar
 
     // --- Albedo ---
-    ALPHA_ICE: 0.62,       // [CHOICE] bright ice/snow, a SURFACE property
+    ALPHA_ICE: 0.62,       // [CHOICE] bright ice/snow
     ICE_T_CENTER: -10.0,   // degC, midpoint of the ice transition
     ICE_T_WIDTH: 3.0,      // [CHOICE] degC, half-width of the smooth ramp
-
-    // --- Clouds ---
-    // Clouds do two opposing things and the model now says so. ALPHA_CLOUD
-    // is solved from Earth's observed planetary albedo of 0.30 at 67% cloud
-    // cover over a clear-sky albedo of 0.15. LW_CLOUD is set so the
-    // longwave effect matches the CERES value at that cover.
-    //
-    // Check against observations, at f = 0.67:
-    //   shortwave effect  -51 W/m^2   (CERES: about -47)
-    //   longwave effect   +26 W/m^2   (CERES: about +26)
-    //   net               -25 W/m^2   (CERES: about -20)
-    //   planetary albedo   0.300      (observed 0.30)
-    ALPHA_CLOUD: 0.374,    // effective albedo of a fully cloudy sky
-    LW_CLOUD: 39.0,        // W/m^2 of extra IR trapping at full cover
 
     // --- Heat capacity ---
     RHO_WATER: 1025.0,     // kg/m^3
@@ -81,29 +64,9 @@
     MIXED_LAYER_M: 70.0,   // [CHOICE] default ocean mixed-layer depth
 
     // --- Meridional heat transport ---
+    // D_rel is the dimensionless slider value the student sees.
     // D_phys = D_rel * D_SCALE, in W/m^2/K.
-    D_SCALE: 2.86,
-    // D_rel is no longer a free parameter. It is derived from day length,
-    // atmospheric pressure, and planet type; see diffusionFrom().
-    D_EARTH_REL: 0.20,     // [FIT] Earth at 24 h, 1 bar
-    DAY_HOURS_EARTH: 24.0,
-    // Rotation exponent. Williams & Kasting 1997 use 2, following Farrell
-    // 1990: faster spin means stronger Coriolis deflection, narrower
-    // circulation cells, and less poleward transport.
-    //
-    // THIS VALUE IS DISPUTED. Vladilo et al. compared against 3D
-    // circulation models and found the n = 2 dependence unsupported,
-    // preferring something weaker, with agreement good at high rotation
-    // rates and poor at low ones. Ramirez 2024 abandoned the analytic form
-    // entirely and fitted coefficients to GCM runs. We keep 2 because it is
-    // the value with a citation attached; changing it is a one-character
-    // edit and the test suite will tell you what moved.
-    D_ROTATION_EXPONENT: 2.0,
-    // Transport used for tidally locked planets. NOT rotation-scaled:
-    // a locked planet's rotation equals its orbital period, which gives
-    // D values around 7-25 and a completely flat temperature profile.
-    // Haqq-Misra et al. report exactly this failure and advise against it.
-    D_LOCKED_DEFAULT: 0.20,
+    D_SCALE: 2.86,         // [FIT] D_rel = 0.35 reproduces Earth's pole-equator contrast
 
     // --- Tidal locking ---
     TIDAL_REF_AGE_GYR: 4.5,   // age the base constant is calibrated to
@@ -286,6 +249,116 @@
   }
 
   /* ===================================================================
+   * SECTION 3.5 — ATMOSPHERIC ESCAPE
+   *
+   * This is the link the interface was missing. Planet mass used to reach
+   * only two calculations (tidal locking and the dynamo), so choosing
+   * "Desert World" set an albedo, a heat-transport default and a mixed-layer
+   * depth that were simply asserted alongside a mass, never derived from it.
+   * A student had no way to see why a small planet should be dry and bright.
+   *
+   * Escape velocity is exact. The retention rule is a rule of thumb, and is
+   * marked as such: a gas survives for billions of years if the escape
+   * velocity is comfortably larger than the typical thermal speed of its
+   * molecules, because the fast tail of the Maxwell-Boltzmann distribution
+   * is always leaking away.
+   *
+   * What this DOES capture: thermal (Jeans) escape, which is why small
+   * worlds cannot hold hydrogen and large ones can.
+   * What it does NOT capture: non-thermal loss -- solar-wind stripping,
+   * impact erosion, photochemical loss. That gap matters, and it is exactly
+   * why Mars is the way it is: Mars retains CO2 thermally and lost it
+   * anyway, once its dynamo died and the solar wind reached the atmosphere.
+   * Callers should pair this with the magnetic-field estimate rather than
+   * present thermal retention as the whole answer.
+   * =================================================================== */
+
+  // irActive: whether the molecule can absorb infrared at all.
+  // N2 and O2 are homonuclear diatomics -- two identical atoms, perfectly
+  // symmetric, no dipole moment. Their only vibration does not change the
+  // charge distribution, so it does not couple to infrared, and no quantity
+  // of them warms a planet. CO2 and CH4 can flex into asymmetric shapes and
+  // H2O is bent to begin with, so all three absorb.
+  // This is why there is no oxygen term in the forcing: not an omission, a
+  // fact about the molecule, and one students routinely get wrong.
+  const GAS_SPECIES = {
+    H2:  { mu: 2.016,  label: 'H\u2082',  irActive: false },
+    He:  { mu: 4.003,  label: 'He',   irActive: false },
+    CH4: { mu: 16.043, label: 'CH\u2084', irActive: true  },
+    H2O: { mu: 18.015, label: 'H\u2082O', irActive: true  },
+    N2:  { mu: 28.013, label: 'N\u2082',  irActive: false },
+    O2:  { mu: 31.999, label: 'O\u2082',  irActive: false },
+    CO2: { mu: 44.010, label: 'CO\u2082', irActive: true  },
+  };
+
+  // [CHOICE] Retention threshold, v_esc / v_thermal. Textbooks quote
+  // anywhere from 5 to 10 for "retained over the age of the solar system".
+  // 6 is used here because it reproduces the solar system: Earth keeps
+  // N2, O2, CO2 and H2O, loses H2, and loses He marginally -- which is
+  // what Earth actually does.
+  const JEANS_RETENTION_FACTOR = 6;
+
+  // [CHOICE] Exosphere temperature at Earth's insolation. Escape happens at
+  // the exobase, not the ground, and that layer is heated by stellar XUV
+  // rather than by the surface: Earth's surface averages 288 K while its
+  // exosphere runs near 1000 K. Using the surface temperature here would
+  // understate escape by a large factor.
+  const T_EXO_EARTH_K = 1000;
+
+  /**
+   * Exosphere temperature, scaled from stellar flux.
+   *
+   * [CHOICE] The quarter-power scaling is borrowed from equilibrium
+   * temperature. It is a stand-in, not a derivation: real exospheric
+   * heating tracks XUV, and the XUV-to-bolometric ratio is far higher for
+   * active M dwarfs than for the Sun. This therefore UNDERSTATES escape
+   * around flare stars, which is the direction that flatters the student's
+   * planet, so interfaces should say so rather than let it pass.
+   */
+  function exosphereTemperature(S0) {
+    return T_EXO_EARTH_K * Math.pow(Math.max(S0, 1e-6) / C.S0_SUN, 0.25);
+  }
+
+  /** Escape velocity in m/s. Exact: sqrt(2GM/R). */
+  function escapeVelocity(massEarth, densityGcm3) {
+    const { radiusM } = planetaryProperties(massEarth, densityGcm3);
+    return Math.sqrt(2 * C.G_GRAV * massEarth * C.M_EARTH / radiusM);
+  }
+
+  /** Most probable speed of a Maxwell-Boltzmann distribution, m/s. */
+  function thermalSpeed(muAmu, tempK) {
+    return Math.sqrt(2 * C.K_BOLTZ * tempK / (muAmu * C.AMU));
+  }
+
+  /**
+   * Which gases this world can hold on to.
+   * @returns {{escapeVelocityMS, exosphereK, factor, species:Object}}
+   *   species[key] = {label, mu, thermalSpeedMS, ratio, retained}
+   */
+  function gasRetention(opts) {
+    const { massEarth, densityGcm3, S0 = C.S0_SUN } = opts;
+    const vEsc = escapeVelocity(massEarth, densityGcm3);
+    const tExo = exosphereTemperature(S0);
+    const species = {};
+    for (const [key, g] of Object.entries(GAS_SPECIES)) {
+      const vTh = thermalSpeed(g.mu, tExo);
+      const ratio = vEsc / vTh;
+      species[key] = {
+        key, label: g.label, mu: g.mu,
+        thermalSpeedMS: vTh,
+        ratio,
+        retained: ratio >= JEANS_RETENTION_FACTOR,
+      };
+    }
+    return {
+      escapeVelocityMS: vEsc,
+      exosphereK: tExo,
+      factor: JEANS_RETENTION_FACTOR,
+      species,
+    };
+  }
+
+  /* ===================================================================
    * SECTION 4 — RADIATIVE FORCING AND ALBEDO
    * =================================================================== */
 
@@ -305,6 +378,63 @@
    */
   function greenhouseForcing(co2ppm, pressureBar) {
     return C.A_GHG * Math.log(co2ppm / C.CO2_REF) + pressureForcing(pressureBar);
+  }
+
+  /**
+   * Greenhouse forcing from an actual gas mixture.
+   *
+   * WHY THIS EXISTS, and how it differs from greenhouseForcing() above:
+   * the old term used CO2 in ppm, which is a MIXING RATIO. Radiative
+   * forcing depends on how many CO2 molecules are in the column, which is
+   * the PARTIAL pressure -- mixing ratio times total pressure. 400 ppm of
+   * CO2 in a 10-bar atmosphere is ten times the CO2 of 400 ppm in a 1-bar
+   * atmosphere and cannot warm the planet by the same amount.
+   *
+   * At 1 bar the two agree exactly, so nothing a student did at default
+   * pressure changes. Away from 1 bar this one is right and the old one
+   * was not.
+   *
+   * The separate pressure-broadening term is deliberately NOT added on top
+   * here. It existed to stand in for the pressure dependence that ppm threw
+   * away; now that pressure enters honestly through the partial pressures
+   * of the absorbing gases, adding it again would double-count the same
+   * physics twice over.
+   *
+   * CH4 uses the Myhre et al. (1998) square-root form. It is included
+   * because a second greenhouse gas is what makes "composition" a real
+   * choice rather than a label.
+   *
+   * STILL MISSING, and it matters for thick CO2 atmospheres: outgoing
+   * radiation saturates in reality, which is what drives a runaway
+   * greenhouse. This model is linear in OLR, so it will understate a truly
+   * Venus-like world even now. MODEL_RANGE is the honest guard.
+   */
+  // Referenced to NO methane, not to Earth's pre-industrial 700 ppb. Myhre's
+  // formula is a difference from a reference concentration, so anchoring it at
+  // 700 ppb made a methane-free world come out with NEGATIVE forcing, which
+  // quietly shifted every default result. Anchoring at zero keeps "no methane"
+  // meaning "no methane forcing", so a 1-bar planet reproduces the old numbers
+  // exactly. The square-root form is fitted near present-day abundances and
+  // overstates the first trace amounts; it is a teaching curve, not a spectrum.
+  const CH4_REF_PPB = 0;
+  function greenhouseForcingMix(opts) {
+    const { pressureBar = 1.0, co2Ppm = 280, ch4Ppm = 0, co2IsBackground = false } = opts;
+    const co2Frac = co2IsBackground
+      ? Math.max(co2Ppm / 1e6, 0.95)      // a CO2-dominated atmosphere is ~all CO2
+      : co2Ppm / 1e6;
+    const pCO2 = Math.max(co2Frac * pressureBar, 1e-12);
+    const pCO2ref = 280e-6 * C.P_REF;
+    const fCO2 = C.A_GHG * Math.log(pCO2 / pCO2ref);
+    const ch4Ppb = Math.max(ch4Ppm * 1000, 0);
+    const fCH4 = 0.036 * (Math.sqrt(ch4Ppb) - Math.sqrt(CH4_REF_PPB));
+    // The square-root form is fitted near Earth's ~1.7 ppm. Past roughly
+    // 100 ppm it is extrapolation by orders of magnitude and runs away, where
+    // the real gas saturates its bands and starts forming haze that COOLS the
+    // surface. Flagged rather than silently clipped, so a student pushing the
+    // slider is told the model has left its evidence behind.
+    const ch4BeyondFit = ch4Ppm > 100;
+    return { total: fCO2 + fCH4, co2: fCO2, ch4: fCH4,
+             partialPressureCO2Bar: pCO2, ch4BeyondFit };
   }
 
   function atmosphereThicknessLabel(pressureBar) {
@@ -332,95 +462,142 @@
   // erases the seasons entirely. A dry world stores almost no heat and
   // swings hard; a waterworld barely swings at all. This is the knob
   // that makes "Desert World" mean something for seasonality.
-  // A planet type is now four independent physical properties rather than
-  // one tuned albedo. surfaceAlbedo is the GROUND, not the planet: the
-  // cloud deck is added on top by cloudyAlbedos().
-  //
-  // mixedLayerM is an EFFECTIVE depth, not a literal one. It sets the
-  // thermal relaxation time and therefore the size of the seasonal swing.
-  // Earth's 8 m is chosen so the amplitude comes out right for a mixed
-  // land-and-ocean planet; a literal 70 m ocean mixed layer gives a
-  // relaxation time of about 4.5 years and erases the seasons entirely.
-  //
-  // transportFactor stands in for ocean circulation. The Williams & Kasting
-  // scaling is atmospheric only, so without this a waterworld and an
-  // Earth-like planet would move heat identically, which they do not.
-  //
-  // massEarth is a REPRESENTATIVE mass, used only where the interface
-  // offers no mass control of its own (currently the dynamo estimate). It
-  // is here rather than in a private lookup table so that any code relying
-  // on it has to name it, and so the interface can tell the student what
-  // mass it assumed.
   const PLANET_TYPES = {
-    earth: {
-      label: 'Earth-like',
-      surfaceAlbedo: 0.15, cloudFraction: 0.67,
-      transportFactor: 1.0, mixedLayerM: 8, massEarth: 1.0,
-    },
-    desert: {
-      // Little water means little cloud greenhouse, so a dry world runs
-      // cold; little heat storage means violent seasons; no ocean means a
-      // steep pole-to-equator gradient. It is harsh but not hopeless --
-      // raising CO2 to a few thousand ppm brings it back above freezing,
-      // which is a chain a student can find and act on.
-      label: 'Desert World',
-      surfaceAlbedo: 0.28, cloudFraction: 0.30,
-      transportFactor: 0.6, mixedLayerM: 2, massEarth: 0.3,
-    },
-    ocean: {
-      label: 'Ocean Super-Earth',
-      surfaceAlbedo: 0.09, cloudFraction: 0.80,
-      transportFactor: 1.6, mixedLayerM: 40, massEarth: 3.0,
-    },
+    // On defaultD: the old file set 0.20 for Earth while the comment
+    // beside it said 0.35 reproduces Earth's pole-equator contrast. They
+    // cannot both be right. Re-tuning against the seasonal model settles
+    // it in favour of the default: D_rel = 0.20 reproduces Earth's 14 degC
+    // global mean and a 24 degC equator. The comment was the stale half.
+    // massEarth is a REPRESENTATIVE mass, used only where the interface
+    // offers no mass control of its own (currently the dynamo estimate).
+    // It is here rather than in a private lookup table so that any code
+    // relying on it has to name it, and so the interface can tell the
+    // student what mass it assumed. The old version hid this, which meant
+    // picking "Desert World" silently guaranteed no magnetic field.
+    earth:  { label: 'Earth-like',        albedo: 0.30, defaultD: 0.20, mixedLayerM: 8,  massEarth: 1.0 },
+    // CHANGED 0.3 -> 0.107 (Mars). At 0.3 Mearth this world retains water
+    // thermally even at 5000 W/m2, so the intended chain -- small, therefore
+    // dry, therefore bright and poor at storing heat -- did not follow from
+    // the mass at all; the albedo and mixed-layer numbers below were simply
+    // asserted next to it. The thermal water-retention boundary sits near
+    // 0.12 Mearth, so a genuinely Mars-like mass puts this world on the far
+    // side of it, and the dynamo heuristic independently returns "no field"
+    // there. The whole Mars story then falls out of the model instead of
+    // being stipulated.
+    desert: { label: 'Mars-like',         albedo: 0.35, defaultD: 0.08, mixedLayerM: 2,  massEarth: 0.107 },
+    ocean:  { label: 'Super-Earth',       albedo: 0.25, defaultD: 0.40, mixedLayerM: 40, massEarth: 3.0 },
   };
 
+  /* ===================================================================
+   * SECTION 4.5 — SURFACE FROM WATER INVENTORY
+   *
+   * PLANET_TYPES used to bundle four numbers behind one dropdown, so a
+   * student picked a costume rather than a property. Mass is now its own
+   * control; the other three -- albedo, heat transport, heat storage -- all
+   * follow from one physical thing, how much surface water there is:
+   *
+   *   dry rock is bright, moves little heat, and stores almost none;
+   *   a global ocean is dark, moves heat well, and stores a great deal.
+   *
+   * The three old types turn out to be exactly three points on that axis:
+   * albedo 0.35 / 0.30 / 0.25 is linear in water fraction, and the other
+   * two interpolate smoothly through the same anchors. So this is not a new
+   * model -- it is the old table with the axis it was always lying along
+   * made explicit, and every previous result is still reachable.
+   *
+   * Water inventory is deliberately NOT derived from mass. Mass decides
+   * what a planet can KEEP; how much it started with depends on where it
+   * formed relative to the snow line and what was delivered later. Callers
+   * should pair this with gasRetention() and say so when a student asks a
+   * bone-dry world for an ocean, or an ocean world that cannot hold water.
+   * =================================================================== */
+
+  const SURFACE_ANCHORS = [
+    { w: 0.0, albedo: 0.35, dRel: 0.08, mixedLayerM: 2,  label: 'dry rock and dust' },
+    { w: 0.5, albedo: 0.30, dRel: 0.20, mixedLayerM: 8,  label: 'mixed land and sea' },
+    { w: 1.0, albedo: 0.25, dRel: 0.40, mixedLayerM: 40, label: 'global ocean' },
+  ];
+
+  function _lerp(a, b, t) { return a + (b - a) * t; }
+  function _logLerp(a, b, t) { return Math.exp(_lerp(Math.log(a), Math.log(b), t)); }
+
   /**
-   * Effective ice and clear-surface albedos once a cloud deck of fraction
-   * fc is laid over them.
-   *
-   *   alpha = (1-fc) * [ice*ALPHA_ICE + (1-ice)*surfaceAlbedo] + fc*ALPHA_CLOUD
-   *
-   * which rearranges into the same two-term form the solvers already use,
-   * with these transformed constants. That is why nothing downstream had to
-   * change shape.
-   *
-   * Note what this does to the ice-albedo feedback: ice now acts on the
-   * SURFACE and the cloud deck masks part of it. Earth's ice-free to
-   * fully-glaciated albedo swing falls from 0.320 to 0.155.
+   * Surface properties for a water fraction in [0, 1].
+   * Albedo interpolates linearly, transport and heat storage logarithmically,
+   * because both span a factor of five or twenty rather than an increment.
    */
-  function cloudyAlbedos(surfaceAlbedo, cloudFraction) {
-    const fc = Math.max(0, Math.min(1, cloudFraction));
+  function surfaceProperties(waterFraction) {
+    const w = Math.max(0, Math.min(1, waterFraction));
+    const i = w <= 0.5 ? 0 : 1;
+    const lo = SURFACE_ANCHORS[i], hi = SURFACE_ANCHORS[i + 1];
+    const t = (w - lo.w) / (hi.w - lo.w);
     return {
-      ice: (1 - fc) * C.ALPHA_ICE + fc * C.ALPHA_CLOUD,
-      base: (1 - fc) * surfaceAlbedo + fc * C.ALPHA_CLOUD,
-      planetary: (1 - fc) * surfaceAlbedo + fc * C.ALPHA_CLOUD,
+      waterFraction: w,
+      albedo: _lerp(lo.albedo, hi.albedo, t),
+      dRel: _logLerp(lo.dRel, hi.dRel, t),
+      mixedLayerM: _logLerp(lo.mixedLayerM, hi.mixedLayerM, t),
+      label: w < 0.17 ? 'dry rock and dust'
+           : w < 0.4  ? 'mostly dry, scattered water'
+           : w < 0.62 ? 'mixed land and sea'
+           : w < 0.85 ? 'ocean with islands'
+           :            'global ocean',
     };
   }
 
-  /** Extra longwave trapping from a cloud deck, in W/m^2. */
-  function cloudLongwave(cloudFraction) {
-    return Math.max(0, Math.min(1, cloudFraction)) * C.LW_CLOUD;
+  /* ===================================================================
+   * SECTION 4.6 — ATMOSPHERIC MIXTURE
+   *
+   * Composition as actual mole fractions rather than a menu of three
+   * named atmospheres. The mean molecular weight this produces is what
+   * decides whether the planet can hold the mixture at all, which is the
+   * link back to Section 3.5.
+   * =================================================================== */
+
+  /**
+   * Ultraviolet shielding from an ozone layer, which is what oxygen actually
+   * does to a planet. O2 itself is radiatively inert, but sunlight splits it
+   * and the fragments recombine into O3, which absorbs hard ultraviolet.
+   *
+   * [CHOICE] Thresholds in absolute mixing ratio. A useful shield appears
+   * somewhere around a hundredth of Earth's present oxygen and is close to
+   * saturated by a tenth of it -- the column depth of ozone rises much faster
+   * than the oxygen that feeds it. Order-of-magnitude, not a photochemical
+   * calculation, and there is no photochemistry anywhere in this model.
+   */
+  function ozoneShielding(o2Fraction) {
+    if (o2Fraction >= 0.02) return { level: 2, label: 'Strong',
+      note: 'Enough oxygen for a substantial ozone layer, so the surface is shielded from hard ultraviolet much as Earth is.' };
+    if (o2Fraction >= 0.002) return { level: 1, label: 'Partial',
+      note: 'Enough oxygen for a thin ozone layer. Some ultraviolet still reaches the ground; life at the surface would need protection.' };
+    return { level: 0, label: 'None',
+      note: 'Too little oxygen for an ozone layer, so unfiltered ultraviolet reaches the ground. Life would need shielding, depth, or water above it.' };
   }
 
   /**
-   * Meridional heat transport, derived rather than chosen.
-   *
-   *   D = D_earth * (P/P0) * (day/24 h)^n * transportFactor
-   *
-   * Following Williams & Kasting 1997, who make D a function of rotation
-   * rate, pressure, mean molecular mass, and atmospheric heat capacity.
-   * This tool has no composition control, so mass and heat capacity drop
-   * out and pressure and rotation remain.
-   *
-   * @param dayHours       length of the planet's day
-   * @param pressureBar    total surface pressure
-   * @param transportFactor  ocean-circulation stand-in, 1.0 for Earth-like
+   * @param {{co2Ppm, o2Ppm, h2Ppm, ch4Ppm}} mix  amounts in ppm by volume;
+   *        nitrogen is whatever is left over.
    */
-  function diffusionFrom(dayHours, pressureBar = 1.0, transportFactor = 1.0) {
-    const day = Math.max(dayHours, 0.1);
-    return C.D_EARTH_REL * Math.max(pressureBar, 0.01)
-      * Math.pow(day / C.DAY_HOURS_EARTH, C.D_ROTATION_EXPONENT)
-      * transportFactor;
+  function atmosphereMixture(mix) {
+    const clampFrac = (ppm) => Math.max(0, (ppm || 0) / 1e6);
+    const co2 = clampFrac(mix.co2Ppm), h2 = clampFrac(mix.h2Ppm),
+          ch4 = clampFrac(mix.ch4Ppm), o2 = clampFrac(mix.o2Ppm);
+    const named = co2 + h2 + ch4 + o2;
+    // Nitrogen fills the remainder. If the named gases already exceed the
+    // whole atmosphere, renormalise instead of inventing negative nitrogen.
+    const scale = named > 1 ? 1 / named : 1;
+    const f = { CO2: co2 * scale, H2: h2 * scale, CH4: ch4 * scale, O2: o2 * scale,
+                N2: named > 1 ? 0 : 1 - named };
+    let mu = 0;
+    for (const k of Object.keys(f)) mu += f[k] * GAS_SPECIES[k].mu;
+    let dominant = 'N2', best = f.N2;
+    for (const k of ['CO2', 'H2', 'CH4', 'O2']) if (f[k] > best) { best = f[k]; dominant = k; }
+    // Only three of these can warm anything. Reported so an interface can say
+    // so rather than leaving a student to infer it from a missing slider.
+    const greenhouseFraction = f.CO2 + f.CH4;
+    const inertFraction = f.N2 + f.O2 + f.H2;
+    return { fractions: f, meanMu: mu, dominant, dominantFraction: best,
+             greenhouseFraction, inertFraction, renormalised: named > 1,
+             ozone: ozoneShielding(f.O2) };
   }
 
   /* ===================================================================
@@ -486,23 +663,24 @@
    */
   function run0dEBM(opts) {
     const {
-      T0_K = 288, co2ppm = 280, S0 = C.S0_SUN,
-      surfaceAlbedo = 0.15, cloudFraction = 0.67,
+      T0_K = 288, co2ppm = 280, S0 = C.S0_SUN, albedoWarm = 0.30,
       pressureBar = 1.0, years = 300, dtYears = 0.5,
       mixedLayerM = C.MIXED_LAYER_M,
     } = opts;
-    const cl = cloudyAlbedos(surfaceAlbedo, cloudFraction);
 
     const heatCapacity = C.RHO_WATER * C.CP_WATER * mixedLayerM;
     const dt = dtYears * C.SEC_PER_YEAR;
     const steps = Math.floor(years / dtYears);
-    const dF = greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(cloudFraction);
+    // forcingWm2 lets a caller pass a mixture-derived forcing (see
+    // greenhouseForcingMix) instead of threading every gas through the solver.
+    const dF = opts.forcingWm2 === undefined
+      ? greenhouseForcing(co2ppm, pressureBar) : opts.forcingWm2;
 
     let T = T0_K;
     const times = [0], raw = [T];
     for (let i = 0; i < steps; i++) {
       const f = iceFraction(T - 273.15);
-      const alb = f * cl.ice + (1 - f) * cl.base;
+      const alb = f * C.ALPHA_ICE + (1 - f) * albedoWarm;
       const asr = S0 * (1 - alb) / 4;
       const olr = C.A_OLR + C.B_OLR * (T - 273.15);
       T += dt * (asr - olr + dF) / heatCapacity;
@@ -586,8 +764,7 @@
    * maxIter, and report whether it actually converged.
    */
   function solveWithAlbedoFeedback(coords, Q, dRel, baseAlbedo, dF, opts = {}) {
-    const { tolerance = 1e-4, maxIter = 200, relaxation = 0.5, dayMask = null,
-            iceAlbedo = C.ALPHA_ICE } = opts;
+    const { tolerance = 1e-4, maxIter = 200, relaxation = 0.5, dayMask = null } = opts;
     const N = coords.length;
     const { lo, di, up } = diffusionOperator(coords, dRel, C.B_OLR);
 
@@ -600,7 +777,7 @@
         // On a tidally locked night side there is no sunlight, so the
         // surface albedo there is irrelevant to the energy budget.
         const f = dayMask && !dayMask[i] ? 0 : frac[i];
-        const alpha = f * iceAlbedo + (1 - f) * baseAlbedo;
+        const alpha = f * C.ALPHA_ICE + (1 - f) * baseAlbedo;
         return q * (1 - alpha) + dF - C.A_OLR;
       });
       T = tridiagSolve(lo, di, up, rhs);
@@ -633,18 +810,17 @@
   function latProfileEquilibrium(opts) {
     const {
       S0 = C.S0_SUN, co2ppm = 280, obliquityDeg = 23.44, planetType = 'earth',
-      dRel = null, pressureBar = 1.0, declinationDeg = null,
-      dayHours = C.DAY_HOURS_EARTH,
+      dRel = null, pressureBar = 1.0, declinationDeg = null, albedo = null,
     } = opts;
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    const D = dRel === null ? diffusionFrom(dayHours, pressureBar, type.transportFactor) : dRel;
+    const alb = albedo === null ? type.albedo : albedo;
+    const D = dRel === null ? type.defaultD : dRel;
     const decl = declinationDeg === null ? obliquityDeg : declinationDeg;
     const lats = latitudeGrid();
-    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
     const Q = lats.map((lat) => dailyMeanInsolation(S0, decl, lat));
-    const out = solveWithAlbedoFeedback(lats, Q, D, cl.base,
-      greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction),
-      { iceAlbedo: cl.ice });
+    const dFeq = opts.forcingWm2 === undefined
+      ? greenhouseForcing(co2ppm, pressureBar) : opts.forcingWm2;
+    const out = solveWithAlbedoFeedback(lats, Q, D, alb, dFeq);
     out.lats = lats;
     out.declinationDeg = decl;
     out.interpretation =
@@ -672,16 +848,16 @@
   function latProfileSeasonal(opts) {
     const {
       S0 = C.S0_SUN, co2ppm = 280, obliquityDeg = 23.44, planetType = 'earth',
-      dRel = null, pressureBar = 1.0, dayHours = C.DAY_HOURS_EARTH,
-      stepsPerYear = 24, spinUpYears = 200,
-      tolerance = 0.02, mixedLayerM = null,
+      dRel = null, pressureBar = 1.0, stepsPerYear = 24, spinUpYears = 200,
+      tolerance = 0.02, mixedLayerM = null, albedo = null,
     } = opts;
 
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    const D = dRel === null ? diffusionFrom(dayHours, pressureBar, type.transportFactor) : dRel;
+    const alb = albedo === null ? type.albedo : albedo;
+    const D = dRel === null ? type.defaultD : dRel;
     const depth = mixedLayerM === null ? type.mixedLayerM : mixedLayerM;
-    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
-    const dF = greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction);
+    const dF = opts.forcingWm2 === undefined
+      ? greenhouseForcing(co2ppm, pressureBar) : opts.forcingWm2;
 
     const lats = latitudeGrid();
     const N = lats.length;
@@ -727,7 +903,7 @@
         const Q = Qyear[s];
         const rhs = Q.map((q, i) => {
           const f = iceFraction(Tbar[i]);
-          const alpha = f * cl.ice + (1 - f) * cl.base;
+          const alpha = f * C.ALPHA_ICE + (1 - f) * alb;
           return q * (1 - alpha) + dF - C.A_OLR + inertia * T[i];
         });
         T = tridiagSolve(lo, di, up, rhs);
@@ -799,21 +975,20 @@
   function tidallyLockedProfile(opts) {
     const {
       S0 = C.S0_SUN, co2ppm = 280, planetType = 'earth',
-      dRel = null, pressureBar = 1.0,
+      dRel = null, pressureBar = 1.0, albedo = null,
     } = opts;
     const type = PLANET_TYPES[planetType] || PLANET_TYPES.earth;
-    // Deliberately NOT rotation-scaled: see D_LOCKED_DEFAULT.
-    const D = dRel === null ? C.D_LOCKED_DEFAULT * type.transportFactor : dRel;
-    const cl = cloudyAlbedos(type.surfaceAlbedo, type.cloudFraction);
+    const alb = albedo === null ? type.albedo : albedo;
+    const D = dRel === null ? type.defaultD : dRel;
 
     const angles = latitudeGrid();
     const Q = angles.map((a) => (a > 0 ? S0 * Math.sin(a * DEG) : 0));
     const dayMask = angles.map((a) => a > 0);
 
+    const dFtl = opts.forcingWm2 === undefined
+      ? greenhouseForcing(co2ppm, pressureBar) : opts.forcingWm2;
     const out = solveWithAlbedoFeedback(
-      angles, Q, D, cl.base,
-      greenhouseForcing(co2ppm, pressureBar) + cloudLongwave(type.cloudFraction),
-      { dayMask, iceAlbedo: cl.ice });
+      angles, Q, D, alb, dFtl, { dayMask });
 
     out.angles = angles;
     out.substellarC = out.tempsC[out.tempsC.length - 1];
@@ -953,8 +1128,13 @@
     // orbit and interior
     effectiveS0, tidalLockRadius, isTidallyLocked, magneticFieldEstimate,
     // forcing
-    pressureForcing, greenhouseForcing, atmosphereThicknessLabel, iceFraction,
-    cloudyAlbedos, cloudLongwave, diffusionFrom,
+    pressureForcing, greenhouseForcing, greenhouseForcingMix,
+    atmosphereThicknessLabel, iceFraction,
+    // atmospheric escape
+    GAS_SPECIES, JEANS_RETENTION_FACTOR,
+    exosphereTemperature, escapeVelocity, thermalSpeed, gasRetention,
+    // surface and mixture
+    SURFACE_ANCHORS, surfaceProperties, atmosphereMixture, ozoneShielding,
     // geometry
     dailyMeanInsolation, solsticeInsolation, monthlyDeclination,
     // solvers
